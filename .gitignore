@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+venv/
+.venv/
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Frontend build/test artifacts
+dist/
+test-results/
+playwright-report/
+.vite/
+
+# Local runtime data
+output/
+*.db
+*.sqlite
+*.sqlite3
+
+# Local secrets and machine files
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# External/reference toolkits not included in the product baseline
+Pixelle-Video/
+superpowers/
+
+# IDE/agent runtime state and generated local integrations
+.cursor/
+.codex/
+.gemini/
+.kiro/
+.mcp.json
+/opencode.json
+.harness/
+.kilo/agent-manager.json
+
+# Harness runtime state is generated and project-local
+.harness/graph/
+.harness/metrics/
+.harness/sessions/
+.harness/state/
+.harness/analyses/
+.harness/debug/
