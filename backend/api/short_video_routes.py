@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from api.auth_routes import get_current_user
 from database import get_db
-from models.persona import ShortVideoProject
+from models.persona import ShortVideoProject, UserAccount
 from services.short_video_workflow import INTENT_CONFIGS, build_short_video_workflow
 
 
@@ -76,8 +77,13 @@ async def build_workflow(data: ShortVideoWorkflowRequest):
 
 
 @router.post("/projects", summary="保存短视频项目归档")
-async def create_short_video_project(data: ShortVideoProjectCreate, db: Session = Depends(get_db)):
+async def create_short_video_project(
+    data: ShortVideoProjectCreate,
+    db: Session = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
+):
     project = ShortVideoProject(
+        user_id=current_user.id,
         title=data.title.strip(),
         subject_name=data.subject_name,
         intent_key=data.intent_key,
@@ -102,11 +108,15 @@ async def create_short_video_project(data: ShortVideoProjectCreate, db: Session 
 
 
 @router.get("/projects", summary="获取短视频项目归档列表")
-async def list_short_video_projects(limit: int = 50, db: Session = Depends(get_db)):
+async def list_short_video_projects(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
+):
     safe_limit = max(1, min(limit, 200))
     projects = (
         db.query(ShortVideoProject)
-        .filter(ShortVideoProject.is_active == True)
+        .filter(ShortVideoProject.user_id == current_user.id, ShortVideoProject.is_active == True)
         .order_by(ShortVideoProject.created_at.desc())
         .limit(safe_limit)
         .all()
@@ -115,8 +125,15 @@ async def list_short_video_projects(limit: int = 50, db: Session = Depends(get_d
 
 
 @router.get("/projects/{project_id}", summary="获取短视频项目归档详情")
-async def get_short_video_project(project_id: int, db: Session = Depends(get_db)):
-    project = db.query(ShortVideoProject).filter(ShortVideoProject.id == project_id).first()
+async def get_short_video_project(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
+):
+    project = db.query(ShortVideoProject).filter(
+        ShortVideoProject.id == project_id,
+        ShortVideoProject.user_id == current_user.id,
+    ).first()
     if not project or not project.is_active:
         raise HTTPException(status_code=404, detail="短视频项目不存在")
     return {"code": 0, "data": project.to_dict(include_content=True)}

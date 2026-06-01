@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "vue-tsc -b && vite build",
     "test:e2e": "playwright test",
-    "preview": "vite preview"
+    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

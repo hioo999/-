@@ -4,10 +4,12 @@
 """
 
 import logging
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
+
+from services.wechat_publisher import WechatPublishError, _validate_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +90,7 @@ async def extract_from_url(url: str) -> str:
     支持：微信公众号文章、小红书、知乎、一般博客等。
     使用 BeautifulSoup 去除 HTML 标签、脚本、样式，提取正文。
     """
+    safe_url = _validate_content_url(url)
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -99,26 +102,23 @@ async def extract_from_url(url: str) -> str:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            html = resp.text
+        safe_url, html = await _fetch_public_html(safe_url, headers)
     except httpx.HTTPError as e:
-        if _should_render_url(url):
-            rendered = await _extract_with_browser(url)
+        if _should_render_url(safe_url):
+            rendered = await _extract_with_browser(safe_url)
             if _is_text_usable(rendered):
                 return rendered
             if _looks_like_error_page(rendered):
                 raise ValueError("该链接返回了登录/验证/反爬限制页面，无法自动提取正文。请复制正文后使用文本模式粘贴。")
-        logger.error(f"URL 抓取失败: {url}, 错误: {e}")
+        logger.error(f"URL 抓取失败: {safe_url}, 错误: {e}")
         raise ValueError(f"无法访问该链接: {e}")
 
     text = _extract_text_from_html(html)
     if _is_text_usable(text):
         return text
 
-    if _should_render_with_browser(url, html):
-        rendered = await _extract_with_browser(url)
+    if _should_render_with_browser(safe_url, html):
+        rendered = await _extract_with_browser(safe_url)
         if _is_text_usable(rendered):
             return rendered
 
@@ -126,6 +126,29 @@ async def extract_from_url(url: str) -> str:
         raise ValueError("该链接返回了登录/验证/反爬限制页面，无法自动提取正文。请复制正文后使用文本模式粘贴。")
 
     return text
+
+
+def _validate_content_url(url: str) -> str:
+    try:
+        return _validate_public_url((url or "").strip(), require_https=False)
+    except WechatPublishError as exc:
+        raise ValueError(f"链接必须是公网 HTTP/HTTPS 地址，不能指向 localhost、内网、链路本地或保留地址：{exc.message}") from exc
+
+
+async def _fetch_public_html(url: str, headers: dict[str, str]) -> tuple[str, str]:
+    current_url = _validate_content_url(url)
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+        for _ in range(6):
+            resp = await client.get(current_url, headers=headers)
+            if resp.status_code in {301, 302, 303, 307, 308}:
+                location = resp.headers.get("location", "")
+                if not location:
+                    resp.raise_for_status()
+                current_url = _validate_content_url(urljoin(current_url, location))
+                continue
+            resp.raise_for_status()
+            return current_url, resp.text
+    raise ValueError("该链接重定向次数过多，无法自动提取正文。")
 
 
 def _extract_text_from_html(html: str) -> str:

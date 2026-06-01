@@ -8,6 +8,15 @@ ip-system — A project using Harness Engineering practices (basic adoption leve
 
 - Main docs: `docs/`
 - Architecture decisions: `docs/architecture.md`
+- Confirmed product requirements must be captured as PRD documents under `docs/`.
+
+## Requirement Documentation Workflow
+
+- When the user discusses a new product requirement, first clarify only the necessary ambiguous points and confirm the intended scope.
+- After the requirement is confirmed, automatically create or update a PRD in `docs/` without waiting for an extra documentation request.
+- The PRD should cover background, goals, user flow, functional scope, page/API/data needs, priorities, acceptance criteria, risks, and implementation phases when applicable.
+- Keep related but separable requirements in separate PRDs, and link them from `docs/index.md`.
+- Current confirmed requirements include video AIP media-task execution and WeChat official account article formatting/draft publishing.
 
 ## Source Code
 

@@ -112,8 +112,12 @@ class TaskRecord:
     current_event: Optional[str] = None
     error: Optional[str] = None
     video_path: Optional[str] = None
+    media_type: Optional[str] = None
+    media_url: Optional[str] = None
+    media_path: Optional[str] = None
     duration: Optional[float] = None
     file_size: Optional[int] = None
+    user_id: int = 0
     params: Dict[str, Any] = field(default_factory=dict)
     asyncio_task: Optional[asyncio.Task] = field(default=None, repr=False)
 
@@ -126,8 +130,12 @@ class TaskRecord:
             "current_event": self.current_event,
             "error": self.error,
             "video_path": self.video_path,
+            "media_type": self.media_type,
+            "media_url": self.media_url,
+            "media_path": self.media_path,
             "duration": self.duration,
             "file_size": self.file_size,
+            "user_id": self.user_id,
             "params": self.params,
         }
 
@@ -154,6 +162,7 @@ def get_task(task_id: str) -> Optional[TaskRecord]:
 def submit_task(
     text: str,
     pipeline: str = "standard",
+    user_id: int = 0,
     **pipeline_kwargs: Any,
 ) -> TaskRecord:
     """Create a TaskRecord and dispatch the engine call as a background task.
@@ -164,6 +173,7 @@ def submit_task(
     record = TaskRecord(
         task_id=uuid.uuid4().hex,
         pipeline=pipeline,
+        user_id=user_id,
         params={"text_preview": text[:120], **pipeline_kwargs},
     )
     _TASKS[record.task_id] = record
@@ -200,12 +210,14 @@ def submit_asset_task(
     video_title: str = "",
     intent: str = "",
     duration: int = 30,
+    user_id: int = 0,
     **pipeline_kwargs: Any,
 ) -> TaskRecord:
     """Dispatch the Pixelle asset_based pipeline as a background task."""
     record = TaskRecord(
         task_id=uuid.uuid4().hex,
         pipeline="asset_based",
+        user_id=user_id,
         params={
             "asset_count": len(assets),
             "video_title": video_title,
@@ -244,4 +256,68 @@ def submit_asset_task(
             logger.exception("Asset video task %s failed", record.task_id)
 
     record.asyncio_task = asyncio.create_task(_run(), name=f"asset-video-task-{record.task_id}")
+    return record
+
+
+def submit_media_task(
+    prompt: str,
+    media_type: str = "image",
+    workflow: Optional[str] = None,
+    user_id: int = 0,
+    on_complete: Optional[Any] = None,
+    **media_kwargs: Any,
+) -> TaskRecord:
+    """Dispatch a Pixelle media workflow as a background image/video task."""
+    record = TaskRecord(
+        task_id=uuid.uuid4().hex,
+        pipeline=f"media:{media_type}",
+        media_type=media_type,
+        user_id=user_id,
+        params={
+            "prompt_preview": prompt[:120],
+            "workflow": workflow,
+            "media_type": media_type,
+            **media_kwargs,
+        },
+    )
+    _TASKS[record.task_id] = record
+
+    async def _run() -> None:
+        record.status = "running"
+        record.progress = 0.05
+        record.current_event = "media_task_submitted"
+        try:
+            result = await _engine().media(
+                prompt=prompt,
+                media_type=media_type,
+                workflow=workflow,
+                **media_kwargs,
+            )
+            record.status = "succeeded"
+            record.progress = 1.0
+            record.current_event = "media_task_completed"
+            record.media_type = getattr(result, "media_type", media_type)
+            record.media_url = getattr(result, "url", None)
+            record.duration = getattr(result, "duration", None)
+            if record.media_url and os.path.exists(record.media_url):
+                record.media_path = record.media_url
+                record.file_size = os.path.getsize(record.media_url)
+                if record.media_type == "video":
+                    record.video_path = record.media_url
+        except Exception as exc:  # pragma: no cover - engine errors
+            record.status = "failed"
+            record.progress = 1.0
+            record.current_event = "media_task_failed"
+            record.error = f"{type(exc).__name__}: {exc}"
+            logger.exception("Media task %s failed", record.task_id)
+        finally:
+            if on_complete is not None:
+                try:
+                    callback_result = on_complete(record)
+                    if asyncio.iscoroutine(callback_result):
+                        await callback_result
+                except Exception:
+                    logger.exception("Media task %s completion callback failed", record.task_id)
+
+    record.asyncio_task = asyncio.create_task(_run(), name=f"media-task-{record.task_id}")
     return record

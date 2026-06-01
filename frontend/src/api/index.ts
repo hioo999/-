@@ -1,5 +1,13 @@
 import { api, apiBaseURL } from './client'
 export * from './auth'
+export * from './personas'
+export * from './strategy'
+export * from './dashboard.api'
+export * from './teleprompter.api'
+export * from './wechat.api'
+export * from './platformContent.api'
+export * from './tasks.api'
+export * from './assets.api'
 
 // ─── 内容解析 ──────────────────────────────────────────────
 
@@ -66,6 +74,9 @@ export interface PromptTemplateData {
   key: string
   template_type?: string
   category_key: string
+  platform?: string
+  scene?: string
+  step?: string
   name: string
   description: string
   scenario: string
@@ -79,10 +90,29 @@ export interface PromptTemplateData {
   is_default?: boolean
   is_active?: boolean
   sort_order: number
+  change_note?: string
+  versionId?: number
+}
+
+export interface PromptTemplateVersionData {
+  versionId: number
+  templateId: number
+  templateKey: string
+  version: string
+  platform: string
+  scene: string
+  step: string
+  outputStructure: string
+  writingRules: string[]
+  defaultParamsJson: string
+  changeNote: string
+  isActive: boolean
+  createdAt: string | null
+  promptBody?: string
 }
 
 export async function listPromptTemplateCategories(templateType = '') {
-  const res = await api.get('/api/copilot/prompt-template-categories', { params: { template_type: templateType } })
+  const res = await api.get('/api/copilot/prompt-template-categories', templateType ? { params: { template_type: templateType } } : undefined)
   return res.data
 }
 
@@ -106,6 +136,425 @@ export async function listPromptTemplates(categoryKey = '', templateType = '') {
   return res.data
 }
 
+// ─── 平台化内容工作台 ────────────────────────────────────────
+
+export interface IpProjectData {
+  projectId: number
+  name: string
+  ipType: string
+  positioning: string
+  targetAudience: string
+  defaultPlatforms: string[]
+  voiceStyle: Record<string, any>
+  status: string
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface ContentTopicData {
+  topicId: number
+  projectId: number
+  title: string
+  inputSourceType: string
+  targetPlatforms: string[]
+  status: string
+  priority: string
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface PlatformContentData {
+  contentId: number
+  projectId: number
+  topicId: number
+  materialId: number
+  platform: string
+  contentType: string
+  title: string
+  subtitle: string
+  author: string
+  summary: string
+  coverPrompt: string
+  coverAssetId: number
+  imageSlots: Array<Record<string, any>>
+  tags: string[]
+  complianceRisks: Array<Record<string, any> | string>
+  status: string
+  version: number
+  content?: Record<string, any>
+  contentHtml?: string
+  markdownSnapshot?: string
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface PlatformPublishConfigData {
+  configId?: number
+  platform: string
+  name: string
+  accountLabel?: string
+  apiBase?: string
+  authType?: string
+  credentials?: string
+  credentialsMasked?: string
+  status?: string
+  notes?: string
+  isActive?: boolean
+  createdAt?: string | null
+  updatedAt?: string | null
+}
+
+export interface CharacterProfileData {
+  characterId?: number
+  projectId?: number
+  name: string
+  role?: string
+  identity?: string
+  personality?: string
+  speakingStyle?: string
+  catchphrase?: string
+  referenceImages?: string[]
+  profile?: Record<string, any>
+  status?: string
+  createdAt?: string | null
+  updatedAt?: string | null
+}
+
+export interface StoryboardRecordData {
+  storyboardId?: number
+  projectId?: number
+  topicId?: number
+  platformContentId?: number
+  title: string
+  storyboardType?: string
+  frames?: Array<Record<string, any>>
+  assets?: Array<Record<string, any>>
+  status?: string
+  createdAt?: string | null
+  updatedAt?: string | null
+}
+
+export interface WechatArticleGenerateParams {
+  projectId?: number
+  topicId?: number
+  projectName?: string
+  topicTitle?: string
+  inputType: 'topic' | 'url' | 'text'
+  sourceUrl?: string
+  rawText?: string
+  theme?: string
+  promptTemplateId?: number
+  textModelConfigId?: number
+  extraRequirements?: string
+}
+
+export interface PlatformTextGenerateParams {
+  projectId?: number
+  topicId?: number
+  projectName?: string
+  topicTitle?: string
+  inputType: 'topic' | 'url' | 'text'
+  sourceUrl?: string
+  rawText?: string
+  theme?: string
+  promptTemplateId?: number
+  textModelConfigId?: number
+  extraRequirements?: string
+  targetPlatform?: string
+}
+
+export interface GenerationRecordData {
+  recordId: number
+  taskId: number
+  projectId: number
+  topicId: number
+  platformContentId: number
+  promptTemplateId: number
+  promptTemplateVersionId: number
+  promptSnapshot: Record<string, any>
+  modelConfigId: number
+  modelSnapshot: Record<string, any>
+  params: Record<string, any>
+  parsedOutput: Record<string, any>
+  parseStatus: string
+  rawResponseExcerpt?: string
+  rawResponseText?: string
+  createdAt: string | null
+}
+
+export interface PlatformWorkspaceOverviewData {
+  workspaces: Array<{
+    platform: string
+    label: string
+    contentType: string
+    status: string
+    contentCount: number
+    recentContents: PlatformContentData[]
+  }>
+  metrics: {
+    projects: number
+    topics: number
+    contents: number
+    assets: number
+    tasks: number
+    generationRecords: number
+    failedTasks: number
+    deletedAssetsRetained: number
+  }
+  statusCounts: Record<string, number>
+  recentContents: PlatformContentData[]
+  recentTasks: Array<Record<string, any>>
+  retentionPolicy: {
+    contentDelete: string
+    assetDelete: string
+    taskRetention: string
+    generationRecordRetention: string
+    message: string
+  }
+  lastActivityAt: string | null
+}
+
+export async function listIpProjects(): Promise<{ code: number; data: { items: IpProjectData[]; total: number } }> {
+  const res = await api.get('/api/projects')
+  return res.data
+}
+
+export async function createIpProject(params: Partial<IpProjectData> & { name: string }): Promise<{ code: number; data: IpProjectData; message: string }> {
+  const res = await api.post('/api/projects', params)
+  return res.data
+}
+
+export async function listProjectTopics(projectId: number): Promise<{ code: number; data: { items: ContentTopicData[]; total: number } }> {
+  const res = await api.get(`/api/projects/${projectId}/topics`)
+  return res.data
+}
+
+export async function createContentTopic(projectId: number, params: { title: string; inputSourceType?: string; targetPlatforms?: string[]; priority?: string }): Promise<{ code: number; data: ContentTopicData; message: string }> {
+  const res = await api.post(`/api/projects/${projectId}/topics`, params)
+  return res.data
+}
+
+export async function listPlatformContents(params: { projectId?: number; topicId?: number; platform?: string; contentType?: string; status?: string; limit?: number } = {}): Promise<{ code: number; data: { items: PlatformContentData[]; total: number } }> {
+  const res = await api.get('/api/platform-contents', { params })
+  return res.data
+}
+
+export async function getPlatformContent(contentId: number) {
+  const res = await api.get(`/api/platform-contents/${contentId}`)
+  return res.data
+}
+
+export async function updatePlatformContent(contentId: number, params: Partial<PlatformContentData> & { content?: Record<string, any> }) {
+  const res = await api.put(`/api/platform-contents/${contentId}`, params)
+  return res.data
+}
+
+export async function exportPlatformContent(contentId: number) {
+  const res = await api.get(`/api/platform-contents/${contentId}/export`)
+  return res.data
+}
+
+export async function downloadPlatformContentPackage(contentId: number): Promise<Blob> {
+  const res = await api.get(`/api/platform-contents/${contentId}/download-package`, { responseType: 'blob' })
+  return res.data
+}
+
+export async function getPlatformWorkspaceOverview(): Promise<{ code: number; data: PlatformWorkspaceOverviewData }> {
+  const res = await api.get('/api/platform-workspace/overview')
+  return res.data
+}
+
+export async function deletePlatformContent(contentId: number): Promise<{ code: number; data: { contentId: number; deleted: boolean; softDeletedAssets: number; retainedTasks: number; retainedGenerationRecords: number }; message: string }> {
+  const res = await api.delete(`/api/platform-contents/${contentId}`)
+  return res.data
+}
+
+export async function generateWechatArticle(params: WechatArticleGenerateParams) {
+  const res = await api.post('/api/wechat/articles/generate', params)
+  return res.data
+}
+
+export async function generateXiaohongshuNote(params: PlatformTextGenerateParams) {
+  const res = await api.post('/api/xiaohongshu/notes', params)
+  return res.data
+}
+
+export async function generateShortVideoScript(params: PlatformTextGenerateParams) {
+  const res = await api.post('/api/short-video/scripts', params)
+  return res.data
+}
+
+export async function generatePlatformContentSlotImage(contentId: number, slotIndex: number, params: { prompt?: string; workflow?: string; imageModelConfigId?: number; width?: number; height?: number; insertToMarkdown?: boolean; extra?: Record<string, any> }) {
+  const res = await api.post(`/api/platform-contents/${contentId}/image-slots/${slotIndex}/generate`, params)
+  return res.data
+}
+
+export async function addPlatformContentImageAsset(contentId: number, params: { imageUrl: string; title?: string; slotIndex?: number; tags?: string[]; insertToMarkdown?: boolean }) {
+  const res = await api.post(`/api/platform-contents/${contentId}/image-assets`, params)
+  return res.data
+}
+
+export async function uploadPlatformContentImageAsset(contentId: number, params: { file: File; title?: string; slotIndex?: number; tags?: string[]; insertToMarkdown?: boolean }) {
+  const form = new FormData()
+  form.append('file', params.file)
+  form.append('title', params.title || '')
+  form.append('slotIndex', String(params.slotIndex ?? -1))
+  form.append('insertToMarkdown', String(params.insertToMarkdown ?? false))
+  form.append('tags', (params.tags || []).join(','))
+  const res = await api.post(`/api/platform-contents/${contentId}/image-upload`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  return res.data
+}
+
+export async function importPlatformContentToTeleprompter(params: { platformContentId: number; settings?: Record<string, any> }) {
+  const res = await api.post('/api/teleprompter/import', params)
+  return res.data
+}
+
+export async function getWechatArticle(contentId: number) {
+  const res = await api.get(`/api/wechat/articles/${contentId}`)
+  return res.data
+}
+
+export async function updateWechatArticle(contentId: number, params: Partial<PlatformContentData>) {
+  const res = await api.put(`/api/wechat/articles/${contentId}`, params)
+  return res.data
+}
+
+export async function listUnifiedTasks(params: { projectId?: number; topicId?: number; platformContentId?: number; taskType?: string; status?: string; limit?: number } = {}) {
+  const res = await api.get('/api/tasks', { params })
+  return res.data
+}
+
+export async function getUnifiedTask(taskId: number) {
+  const res = await api.get(`/api/tasks/${taskId}`)
+  return res.data
+}
+
+export async function retryUnifiedTask(taskId: number, params: { overrides?: Record<string, any> } = {}) {
+  const res = await api.post(`/api/tasks/${taskId}/retry`, params)
+  return res.data
+}
+
+export async function listUnifiedAssets(params: { projectId?: number; topicId?: number; platformContentId?: number; assetType?: string; sourceType?: string; tag?: string; limit?: number } = {}) {
+  const res = await api.get('/api/assets', { params })
+  return res.data
+}
+
+export async function listGenerationRecords(params: { taskId?: number; projectId?: number; topicId?: number; platformContentId?: number; parseStatus?: string; includeRaw?: boolean; limit?: number } = {}): Promise<{ code: number; data: { items: GenerationRecordData[]; total: number } }> {
+  const res = await api.get('/api/generation-records', { params })
+  return res.data
+}
+
+export async function createUnifiedAsset(params: { assetType?: string; sourceType?: string; title?: string; url?: string; storagePath?: string; projectId?: number; topicId?: number; platformContentId?: number; metadata?: Record<string, any>; tags?: string[] }) {
+  const res = await api.post('/api/assets', params)
+  return res.data
+}
+
+export async function getUnifiedAsset(assetId: number) {
+  const res = await api.get(`/api/assets/${assetId}`)
+  return res.data
+}
+
+export async function downloadUnifiedAssetFile(assetId: number): Promise<Blob> {
+  const res = await api.get(`/api/assets/${assetId}/file`, { responseType: 'blob' })
+  return res.data
+}
+
+export async function deleteUnifiedAsset(assetId: number) {
+  const res = await api.delete(`/api/assets/${assetId}`)
+  return res.data
+}
+
+export async function reuseUnifiedAsset(assetId: number, params: { target?: string; platformContentId: number; slotIndex: number; insertToMarkdown?: boolean }) {
+  const res = await api.post(`/api/assets/${assetId}/reuse`, params)
+  return res.data
+}
+
+export async function generateWechatArticleSlotImage(contentId: number, slotIndex: number, params: { prompt?: string; workflow?: string; imageModelConfigId?: number; width?: number; height?: number; insertToMarkdown?: boolean; extra?: Record<string, any> }) {
+  const res = await api.post(`/api/wechat/articles/${contentId}/image-slots/${slotIndex}/generate`, params)
+  return res.data
+}
+
+export async function generateWechatArticleCover(contentId: number, params: { prompt?: string; workflow?: string; imageModelConfigId?: number; width?: number; height?: number; extra?: Record<string, any> } = {}) {
+  const res = await api.post(`/api/wechat/articles/${contentId}/cover/generate`, params)
+  return res.data
+}
+
+export async function setWechatArticleCover(contentId: number, params: { assetId?: number; imageUrl?: string }) {
+  const res = await api.post(`/api/wechat/articles/${contentId}/cover`, params)
+  return res.data
+}
+
+export async function insertWechatArticleSlotImage(contentId: number, slotIndex: number, params: { assetId?: number; imageUrl?: string; altText?: string; insertToMarkdown?: boolean }) {
+  const res = await api.post(`/api/wechat/articles/${contentId}/image-slots/${slotIndex}/insert`, params)
+  return res.data
+}
+
+export async function removeWechatArticleSlotAsset(contentId: number, slotIndex: number) {
+  const res = await api.delete(`/api/wechat/articles/${contentId}/image-slots/${slotIndex}/asset`)
+  return res.data
+}
+
+export async function listPlatformPublishConfigs(platform = '') {
+  const res = await api.get('/api/platform-publish-configs', { params: { platform } })
+  return res.data
+}
+
+export async function createPlatformPublishConfig(data: PlatformPublishConfigData) {
+  const res = await api.post('/api/platform-publish-configs', data)
+  return res.data
+}
+
+export async function updatePlatformPublishConfig(configId: number, data: PlatformPublishConfigData) {
+  const res = await api.put(`/api/platform-publish-configs/${configId}`, data)
+  return res.data
+}
+
+export async function deletePlatformPublishConfig(configId: number) {
+  const res = await api.delete(`/api/platform-publish-configs/${configId}`)
+  return res.data
+}
+
+export async function listCharacterProfiles(params: { projectId?: number } = {}) {
+  const res = await api.get('/api/characters', { params })
+  return res.data
+}
+
+export async function createCharacterProfile(data: CharacterProfileData) {
+  const res = await api.post('/api/characters', data)
+  return res.data
+}
+
+export async function updateCharacterProfile(characterId: number, data: CharacterProfileData) {
+  const res = await api.put(`/api/characters/${characterId}`, data)
+  return res.data
+}
+
+export async function deleteCharacterProfile(characterId: number) {
+  const res = await api.delete(`/api/characters/${characterId}`)
+  return res.data
+}
+
+export async function listStoryboardRecords(params: { projectId?: number; topicId?: number; platformContentId?: number; storyboardType?: string } = {}) {
+  const res = await api.get('/api/storyboards', { params })
+  return res.data
+}
+
+export async function createStoryboardRecord(data: StoryboardRecordData) {
+  const res = await api.post('/api/storyboards', data)
+  return res.data
+}
+
+export async function updateStoryboardRecord(storyboardId: number, data: StoryboardRecordData) {
+  const res = await api.put(`/api/storyboards/${storyboardId}`, data)
+  return res.data
+}
+
+export async function deleteStoryboardRecord(storyboardId: number) {
+  const res = await api.delete(`/api/storyboards/${storyboardId}`)
+  return res.data
+}
+
 export async function createPromptTemplate(data: PromptTemplateData) {
   const res = await api.post('/api/copilot/prompt-templates', data)
   return res.data
@@ -113,6 +562,11 @@ export async function createPromptTemplate(data: PromptTemplateData) {
 
 export async function getPromptTemplate(id: number) {
   const res = await api.get(`/api/copilot/prompt-templates/${id}`)
+  return res.data
+}
+
+export async function listPromptTemplateVersions(id: number): Promise<{ code: number; data: { items: PromptTemplateVersionData[]; total: number } }> {
+  const res = await api.get(`/api/copilot/prompt-templates/${id}/versions`)
   return res.data
 }
 
@@ -126,8 +580,113 @@ export async function deletePromptTemplate(id: number) {
   return res.data
 }
 
+// ─── 微信公众号排版与草稿 ──────────────────────────────────────
+
+export interface WechatAccountPayload {
+  name: string
+  appId: string
+  appSecret?: string
+  originalId?: string
+  feishuAccount?: string
+  themeId?: string
+  apiBase?: string
+  defaultCoverUrl?: string
+  notes?: string
+  isDefault?: boolean
+}
+
+export interface WechatAccount extends Omit<WechatAccountPayload, 'appSecret'> {
+  accountId: number
+  scope?: string
+  appSecretMasked: string
+  isActive?: boolean
+  authorizedUserIds?: number[]
+  lastTestStatus: string
+  lastTestMessage: string
+  lastTestAt: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface WechatDraftPayload {
+  accountId: number
+  platformContentId?: number
+  title: string
+  author?: string
+  digest?: string
+  rawContent: string
+  coverUrl?: string
+  contentSourceUrl?: string
+  style?: string
+  idempotencyKey?: string
+}
+
+export interface WechatDraftRecord extends WechatDraftPayload {
+  draftId: number
+  wechatMediaId: string
+  thumbMediaId: string
+  formattedHtml?: string
+  status: string
+  errorCode: string
+  errorMessage: string
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export async function listWechatAccounts(): Promise<{ code: number; data: { items: WechatAccount[] } }> {
+  const res = await api.get('/api/wechat/accounts')
+  return res.data
+}
+
+export async function createWechatAccount(params: WechatAccountPayload): Promise<{ code: number; data: WechatAccount; message: string }> {
+  const res = await api.post('/api/wechat/accounts', params)
+  return res.data
+}
+
+export async function updateWechatAccount(accountId: number, params: WechatAccountPayload): Promise<{ code: number; data: WechatAccount; message: string }> {
+  const res = await api.put(`/api/wechat/accounts/${accountId}`, params)
+  return res.data
+}
+
+export async function deleteWechatAccount(accountId: number): Promise<{ code: number; data: { accountId: number; deleted: boolean }; message: string }> {
+  const res = await api.delete(`/api/wechat/accounts/${accountId}`)
+  return res.data
+}
+
+export async function testWechatAccount(accountId: number): Promise<{ code: number; data: { ok: boolean; errorCode?: string }; message: string }> {
+  const res = await api.post(`/api/wechat/accounts/${accountId}/test`)
+  return res.data
+}
+
+export async function listWechatThemes(params: { feishuAccount: string; apiBase?: string }) {
+  const res = await api.post('/api/wechat/themes/list', params)
+  return res.data
+}
+
+export async function previewWechatFormat(params: { title: string; rawContent: string; style?: string; accountId?: number; feishuAccount?: string; themeId?: string; apiBase?: string }) {
+  const res = await api.post('/api/wechat/format/preview', params)
+  return res.data
+}
+
+export async function preflightWechatDraft(params: { accountId?: number; title: string; digest?: string; rawContent: string; coverUrl?: string }) {
+  const res = await api.post('/api/wechat/drafts/preflight', params)
+  return res.data
+}
+
+export async function sendWechatDraft(params: WechatDraftPayload): Promise<{ code: number; data: WechatDraftRecord; message: string }> {
+  const res = await api.post('/api/wechat/drafts', params)
+  return res.data
+}
+
+export async function listWechatDrafts(params: { page?: number; pageSize?: number; status?: string } = {}): Promise<{ code: number; data: { items: WechatDraftRecord[]; total: number; page: number; pageSize: number } }> {
+  const res = await api.get('/api/wechat/drafts', { params })
+  return res.data
+}
+
 export interface AIModelConfigData {
   id?: number
+  user_id?: number
+  gateway_id?: number
   name: string
   model_type: string
   provider: string
@@ -138,6 +697,11 @@ export interface AIModelConfigData {
   is_openai_compatible?: boolean
   is_default?: boolean
   is_active?: boolean
+  recommendation_label?: string
+  recommendation_reason?: string
+  risk_note?: string
+  last_seen_at?: string | null
+  resolved_by?: string
   timeout_seconds?: number
   max_retries?: number
   sort_order?: number
@@ -169,17 +733,100 @@ export async function deleteModelConfig(id: number) {
   return res.data
 }
 
+export interface ModelGatewayData {
+  id?: number
+  user_id?: number
+  scope?: 'user' | 'global'
+  name: string
+  provider_type?: string
+  base_url: string
+  api_key?: string
+  api_key_masked?: string
+  is_active?: boolean
+  last_test_status?: string
+  last_test_message?: string
+  last_model_count?: number
+  last_synced_at?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface ModelDefaultsData {
+  text?: { personal: AIModelConfigData | null; global: AIModelConfigData | null; resolved: AIModelConfigData | null }
+  image?: { personal: AIModelConfigData | null; global: AIModelConfigData | null; resolved: AIModelConfigData | null }
+  video?: { personal: AIModelConfigData | null; global: AIModelConfigData | null; resolved: AIModelConfigData | null }
+  multimodal?: { personal: AIModelConfigData | null; global: AIModelConfigData | null; resolved: AIModelConfigData | null }
+}
+
+export async function listModelGateways() {
+  const res = await api.get('/api/model-gateways')
+  return res.data
+}
+
+export async function createModelGateway(data: ModelGatewayData) {
+  const res = await api.post('/api/model-gateways', data)
+  return res.data
+}
+
+export async function updateModelGateway(id: number, data: ModelGatewayData) {
+  const res = await api.put(`/api/model-gateways/${id}`, data)
+  return res.data
+}
+
+export async function deleteModelGateway(id: number) {
+  const res = await api.delete(`/api/model-gateways/${id}`)
+  return res.data
+}
+
+export async function testModelGateway(id: number) {
+  const res = await api.post(`/api/model-gateways/${id}/test`)
+  return res.data
+}
+
+export async function syncModelGatewayModels(id: number) {
+  const res = await api.post(`/api/model-gateways/${id}/sync-models`)
+  return res.data
+}
+
+export async function listModelCatalog(modelType = '') {
+  const res = await api.get('/api/models/catalog', { params: { model_type: modelType } })
+  return res.data
+}
+
+export async function updateModelCatalogItem(id: number, data: Partial<AIModelConfigData>) {
+  const res = await api.patch(`/api/models/catalog/${id}`, data)
+  return res.data
+}
+
+export async function getModelDefaults() {
+  const res = await api.get('/api/model-defaults')
+  return res.data
+}
+
+export async function setModelDefault(modelType: string, modelConfigId: number) {
+  const res = await api.put('/api/model-defaults', { model_type: modelType, model_config_id: modelConfigId })
+  return res.data
+}
+
+export async function setGlobalModelDefault(modelType: string, modelConfigId: number) {
+  const res = await api.put('/api/admin/model-defaults', { model_type: modelType, model_config_id: modelConfigId })
+  return res.data
+}
+
 export interface VideoAipPlanParams {
+  title?: string
   workflow_type: 'standard' | 'product_tvc' | 'drama'
   source_content?: string
   script_content?: string
   product_name?: string
   character_notes?: string
   media_notes?: string[]
+  source_assets?: VideoAssetAnalysisItem[]
   aspect_ratio?: string
   duration?: string
   style?: string
   user_requirements?: string
+  text_model_config_id?: number
   video_prompt_template_id?: number
   video_model_config_id?: number
 }
@@ -189,6 +836,26 @@ export interface VideoAipPlanStep {
   title: string
   goal: string
   prompt: string
+  task_type?: 'text' | 'image' | 'video'
+  artifact_type?: string
+  default_media_type?: 'image' | 'video'
+  default_width?: number
+  default_height?: number
+}
+
+export interface VideoAipStepTask {
+  id: number
+  project_id: number
+  step_key: string
+  title: string
+  goal: string
+  prompt: string
+  status: 'pending' | 'running' | 'succeeded' | 'failed'
+  output: Record<string, any>
+  error_message: string
+  sort_order: number
+  created_at: string | null
+  updated_at: string | null
 }
 
 export interface VideoAipPlanResult {
@@ -201,8 +868,87 @@ export interface VideoAipPlanResult {
   handoff: string
 }
 
+export interface VideoAipProject {
+  id: number
+  title: string
+  workflow_type: string
+  status: 'planned' | 'running' | 'succeeded' | 'failed'
+  source_content: string
+  script_content: string
+  product_name: string
+  character_notes: string
+  source_type: string
+  source_ref_id: number
+  source?: {
+    type: string
+    refId: number
+    label: string
+    title: string
+    status: string
+    meta?: string
+    anchor?: string
+  }
+  source_assets: VideoAssetAnalysisItem[]
+  params: Record<string, any>
+  current_step_key: string
+  plan?: VideoAipPlanResult
+  steps?: VideoAipStepTask[]
+  created_at: string | null
+  updated_at: string | null
+}
+
 export async function generateVideoAipPlan(params: VideoAipPlanParams) {
   const res = await api.post('/api/copilot/video-aip/plan', params)
+  return res.data
+}
+
+export async function createVideoAipProject(params: VideoAipPlanParams) {
+  const res = await api.post('/api/copilot/video-aip/projects', params)
+  return res.data
+}
+
+export async function createVideoAipProjectFromShortVideo(projectId: number, params: { title?: string; workflow_type?: string } = {}) {
+  const res = await api.post(`/api/copilot/video-aip/projects/from-short-video/${projectId}`, params)
+  return res.data
+}
+
+export async function createVideoAipProjectFromStoryboard(storyboardId: number, params: { title?: string; workflow_type?: string } = {}) {
+  const res = await api.post(`/api/copilot/video-aip/projects/from-storyboard/${storyboardId}`, params)
+  return res.data
+}
+
+export async function listVideoAipProjects(params: { limit?: number; workflow_type?: string; source_type?: string; source_ref_id?: number } = {}) {
+  const res = await api.get('/api/copilot/video-aip/projects', { params })
+  return res.data
+}
+
+export async function getVideoAipProject(projectId: number) {
+  const res = await api.get(`/api/copilot/video-aip/projects/${projectId}`)
+  return res.data
+}
+
+export async function updateVideoAipStep(projectId: number, stepId: number, params: { status: string; output?: Record<string, any>; error_message?: string }) {
+  const res = await api.put(`/api/copilot/video-aip/projects/${projectId}/steps/${stepId}`, params)
+  return res.data
+}
+
+export async function runVideoAipStep(projectId: number, stepId: number, params: Record<string, any> = {}) {
+  const res = await api.post(`/api/copilot/video-aip/projects/${projectId}/steps/${stepId}/run`, params)
+  return res.data
+}
+
+export async function runNextVideoAipStep(projectId: number) {
+  const res = await api.post(`/api/copilot/video-aip/projects/${projectId}/run-next`)
+  return res.data
+}
+
+export async function runAllVideoAipSteps(projectId: number) {
+  const res = await api.post(`/api/copilot/video-aip/projects/${projectId}/run-all`)
+  return res.data
+}
+
+export async function retryVideoAipStep(projectId: number, stepId: number, params: Record<string, any> = {}) {
+  const res = await api.post(`/api/copilot/video-aip/projects/${projectId}/steps/${stepId}/retry`, params)
   return res.data
 }
 
@@ -291,128 +1037,6 @@ export async function copilotModifyStream(
   } catch (err: any) {
     onError(err.message || '网络错误')
   }
-}
-
-// ─── 人设库 ────────────────────────────────────────────────
-
-export interface PersonaData {
-  id?: number
-  name: string
-  avatar_url?: string
-  description?: string
-  tone?: string
-  speaking_style?: string
-  catchphrase?: string
-  target_audience?: string
-  professional_field?: string
-  reference_account?: string
-  forbidden_words?: string
-  full_prompt?: string
-  sort_order?: number
-  is_active?: boolean
-}
-
-export async function listPersonas() {
-  const res = await api.get('/api/personas')
-  return res.data
-}
-
-export async function createPersona(data: PersonaData) {
-  const res = await api.post('/api/personas', data)
-  return res.data
-}
-
-export async function updatePersona(id: number, data: PersonaData) {
-  const res = await api.put(`/api/personas/${id}`, data)
-  return res.data
-}
-
-export async function deletePersona(id: number) {
-  const res = await api.delete(`/api/personas/${id}`)
-  return res.data
-}
-
-// ─── 栏目库与内容策略 ────────────────────────────────────────
-
-export interface ContentColumnData {
-  id?: number
-  name: string
-  persona_id?: number
-  goal?: string
-  target_platform?: string
-  duration?: string
-  structure?: string
-  opening_style?: string
-  cta?: string
-  default_template?: string
-  default_voice?: string
-  default_bgm?: string
-  notes?: string
-  sort_order?: number
-  is_active?: boolean
-}
-
-export async function listColumns(personaId = 0) {
-  const res = await api.get('/api/copilot/columns', { params: { persona_id: personaId } })
-  return res.data
-}
-
-export async function createColumn(data: ContentColumnData) {
-  const res = await api.post('/api/copilot/columns', data)
-  return res.data
-}
-
-export async function updateColumn(id: number, data: ContentColumnData) {
-  const res = await api.put(`/api/copilot/columns/${id}`, data)
-  return res.data
-}
-
-export async function deleteColumn(id: number) {
-  const res = await api.delete(`/api/copilot/columns/${id}`)
-  return res.data
-}
-
-export async function generateTopicPlan(params: {
-  extracted_content: string
-  persona_id?: number
-  column_id?: number
-  count?: number
-  extra_requirements?: string
-}) {
-  const res = await api.post('/api/copilot/strategy/topics', params)
-  return res.data
-}
-
-export async function optimizeHooks(params: {
-  script_content: string
-  persona_id?: number
-  column_id?: number
-  count?: number
-}) {
-  const res = await api.post('/api/copilot/strategy/hooks', params)
-  return res.data
-}
-
-export async function generatePublishPackage(params: {
-  script_content: string
-  cover_prompt?: string
-  target_platform?: string
-  persona_id?: number
-  column_id?: number
-}) {
-  const res = await api.post('/api/copilot/strategy/publish-package', params)
-  return res.data
-}
-
-export async function qualityCheck(params: {
-  script_content: string
-  cover_prompt?: string
-  publish_copy?: string
-  persona_id?: number
-  column_id?: number
-}) {
-  const res = await api.post('/api/copilot/strategy/quality-check', params)
-  return res.data
 }
 
 // ─── AI短视频工作流路由 ──────────────────────────────────────
@@ -697,6 +1321,9 @@ export interface VideoTaskStatus {
   current_event: string | null
   error: string | null
   video_path: string | null
+  media_type: 'image' | 'video' | null
+  media_url: string | null
+  media_path: string | null
   duration: number | null
   file_size: number | null
 }
@@ -774,6 +1401,10 @@ export async function submitAssetVideoGenerate(params: {
 
 export function videoTaskFileUrl(taskId: string): string {
   return `${apiBaseURL}/api/video/tasks/${taskId}/file`
+}
+
+export function videoTaskMediaFileUrl(taskId: string): string {
+  return `${apiBaseURL}/api/video/tasks/${taskId}/media-file`
 }
 
 // ─── Sprint 1 全案底座 Mock API ─────────────────────────────

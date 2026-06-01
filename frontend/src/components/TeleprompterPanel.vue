@@ -14,7 +14,7 @@ import {
   type TeleprompterDraft,
   type TeleprompterDraftPayload,
   type TeleprompterDraftSummary,
-} from '../api'
+} from '../api/teleprompter.api'
 
 const STORAGE_KEY = 'ip-case-teleprompter-state'
 const DOC_IMPORT_ACCEPT = '.txt,.md,.doc,.docx,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'

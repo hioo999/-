@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { ref, reactive, nextTick, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import HomeToolCards, { type ToolKey } from '../components/HomeToolCards.vue'
 import TeleprompterPanel from '../components/TeleprompterPanel.vue'
+import WechatArticlePublisher from '../components/WechatArticlePublisher.vue'
+import PlatformContentStudio from '../components/PlatformContentStudio.vue'
+import ProductionCenter from '../components/ProductionCenter.vue'
+import WorkspaceHeader from '../components/WorkspaceHeader.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import Sprint1CaseWorkspace from './Sprint1CaseWorkspace.vue'
+import { modePathMap } from '../stores/workspace'
 import {
   parseUrl,
   parseText,
@@ -12,18 +19,17 @@ import {
   listPersonas,
   listColumns,
   createColumn,
-  listPromptTemplateCategories,
-  listPromptTemplates,
-  createPromptTemplateCategory,
-  updatePromptTemplateCategory,
-  deletePromptTemplateCategory,
-  createPromptTemplate,
-  getPromptTemplate,
-  updatePromptTemplate,
-  deletePromptTemplate,
-  createModelConfig,
-  deleteModelConfig,
   generateVideoAipPlan,
+  createVideoAipProject,
+  createVideoAipProjectFromShortVideo,
+  getVideoAipProject,
+  updateVideoAipStep,
+  runVideoAipStep,
+  runNextVideoAipStep,
+  runAllVideoAipSteps,
+  retryVideoAipStep,
+  getVideoTask,
+  videoTaskMediaFileUrl,
   generateTopicPlan,
   optimizeHooks,
   generatePublishPackage,
@@ -35,18 +41,46 @@ import {
   deleteReversalDramaHistory,
   clearReversalDramaHistory,
   analyzeVideoAssets,
-  listModelConfigs,
   type GenerateParams,
   type ContentColumnData,
-  type PromptTemplateCategoryData,
-  type PromptTemplateData,
-  type AIModelConfigData,
-  type VideoAipPlanResult,
-  type ShortVideoWorkflowResult,
+  type VideoAipStepTask,
   type ReversalCharacter,
   type ReversalDramaResult,
   type VideoAssetAnalysisItem,
 } from '../api'
+import {
+  createPromptTemplate,
+  createPromptTemplateCategory,
+  deletePromptTemplate,
+  deletePromptTemplateCategory,
+  getPromptTemplate,
+  listPromptTemplateCategories,
+  listPromptTemplates,
+  listPromptTemplateVersions,
+  updatePromptTemplate,
+  updatePromptTemplateCategory,
+  type PromptTemplateCategoryData,
+  type PromptTemplateData,
+  type PromptTemplateVersionData,
+} from '../api/promptTemplates.api'
+import {
+  createModelConfig,
+  createModelGateway,
+  deleteModelConfig,
+  deleteModelGateway,
+  getModelDefaults,
+  listModelCatalog,
+  listModelConfigs,
+  listModelGateways,
+  setGlobalModelDefault,
+  setModelDefault,
+  syncModelGatewayModels,
+  testModelGateway,
+  updateModelCatalogItem,
+  type AIModelConfigData,
+  type ModelDefaultsData,
+  type ModelGatewayData,
+} from '../api/modelConfig.api'
 
 // ─── State ──────────────────────────────────────────────────
 
@@ -55,7 +89,7 @@ const inputMode = ref<'topic' | 'url' | 'text' | 'file' | 'media'>('topic')
 const topicInput = ref('')
 const urlInput = ref('')
 const textInput = ref('')
-const fileInput = ref<File | null>(null)
+const fileInput = ref<any>(null)
 const mediaFiles = ref<File[]>([])
 const analyzedAssets = ref<VideoAssetAnalysisItem[]>([])
 
@@ -79,6 +113,8 @@ const textModelConfigs = ref<AIModelConfigData[]>([])
 const imageModelConfigs = ref<AIModelConfigData[]>([])
 const videoModelConfigs = ref<AIModelConfigData[]>([])
 const modelManagerConfigs = ref<AIModelConfigData[]>([])
+const modelGateways = ref<ModelGatewayData[]>([])
+const modelDefaults = ref<ModelDefaultsData>({})
 const selectedPersonaId = ref(0)
 const selectedColumnId = ref(0)
 const selectedPromptCategory = ref('knowledge_talk')
@@ -103,8 +139,12 @@ const promptManagerFeedback = ref<{ type: 'success' | 'error' | 'info'; message:
 const isSavingPromptCategory = ref(false)
 const isSavingPromptTemplate = ref(false)
 const isSavingModelConfig = ref(false)
+const isSavingModelGateway = ref(false)
+const modelGatewayFeedback = ref<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
+const modelGatewayBusy = reactive<Record<number, boolean>>({})
 const editingPromptCategoryKey = ref('')
 const editingPromptTemplateId = ref(0)
+const promptTemplateVersions = ref<PromptTemplateVersionData[]>([])
 
 const promptCategoryForm = reactive<PromptTemplateCategoryData>({
   key: '',
@@ -118,6 +158,9 @@ const promptTemplateForm = reactive<PromptTemplateData>({
   id: 0,
   key: '',
   category_key: '',
+  platform: '',
+  scene: '',
+  step: '',
   name: '',
   description: '',
   scenario: '',
@@ -128,6 +171,7 @@ const promptTemplateForm = reactive<PromptTemplateData>({
   is_default: false,
   is_active: true,
   sort_order: 0,
+  change_note: '',
 })
 const promptTemplateRulesText = ref('')
 
@@ -147,6 +191,15 @@ const modelConfigForm = reactive<AIModelConfigData>({
   notes: '',
 })
 
+const modelGatewayForm = reactive<ModelGatewayData>({
+  name: '',
+  scope: 'user',
+  provider_type: 'openai_compatible',
+  base_url: 'https://api.openai.com/v1',
+  api_key: '',
+  is_active: true,
+})
+
 const quickColumn = reactive<ContentColumnData>({
   name: '老板60秒',
   goal: '建信任',
@@ -158,7 +211,7 @@ const quickColumn = reactive<ContentColumnData>({
 })
 
 const strategyOutputs = reactive({
-  shortVideoWorkflow: null as ShortVideoWorkflowResult | null,
+  shortVideoWorkflow: null as any,
   topics: null as any,
   hooks: null as any,
   publishPackage: null as any,
@@ -167,10 +220,38 @@ const strategyOutputs = reactive({
 
 const isShortVideoLoading = ref(false)
 const isSavingShortVideoProject = ref(false)
+const isCreatingAipFromShortVideo = ref(false)
+const savedShortVideoProjectId = ref(0)
 const isVideoAipPlanning = ref(false)
-const videoAipPlan = ref<VideoAipPlanResult | null>(null)
+const isSavingVideoAipProject = ref(false)
+const isRunningVideoAipNext = ref(false)
+const isRunningVideoAipAll = ref(false)
+const runningVideoAipStepIds = reactive<Record<number, boolean>>({})
+const videoAipPlan = ref<any>(null)
+const videoAipProject = ref<any>(null)
 const videoAipProductName = ref('')
 const videoAipCharacterNotes = ref('')
+
+const videoAipDisplaySteps = computed<any[]>(() => {
+  if (videoAipProject.value?.steps?.length) {
+    return videoAipProject.value.steps.map((step: any) => ({
+      ...step,
+      displayKey: step.step_key,
+      displayStatus: step.status,
+      isPersistedTask: true,
+      task_type: step.output?.task_type || step.output?.media_type || 'text',
+      artifact_type: step.output?.artifact_type || '',
+    }))
+  }
+  return (videoAipPlan.value?.steps || []).map((step: any) => ({
+    ...step,
+    id: 0,
+    output: {},
+    displayKey: step.key,
+    displayStatus: 'planned',
+    isPersistedTask: false,
+  }))
+})
 const shortVideoForm = reactive({
   user_input: '',
   requested_intent: 'auto',
@@ -198,7 +279,7 @@ const selectedColumn = computed(() =>
   columns.value.find((column) => column.id === selectedColumnId.value) || null
 )
 
-const selectedPromptTemplate = computed(() =>
+const selectedPromptTemplate = computed<any>(() =>
   promptTemplates.value.find((template) => template.id === selectedPromptTemplateId.value) || null
 )
 
@@ -213,6 +294,52 @@ const selectedCoverPromptTemplate = computed(() =>
 const selectedVideoPromptTemplate = computed(() =>
   videoPromptTemplates.value.find((template) => template.id === selectedVideoPromptTemplateId.value) || null
 )
+
+const selectedTextModelConfig = computed(() => textModelConfigs.value.find((model) => model.id === selectedTextModelConfigId.value) || null)
+const selectedCoverModelConfig = computed(() => imageModelConfigs.value.find((model) => model.id === selectedCoverModelConfigId.value) || null)
+const selectedVideoModelConfig = computed(() => videoModelConfigs.value.find((model) => model.id === selectedVideoModelConfigId.value) || null)
+
+const modelTypeLabels: Record<string, string> = {
+  text: '文字',
+  image: '图片',
+  video: '视频',
+  multimodal: '多模态',
+  unknown: '待标注',
+}
+
+const modelResolutionLabels: Record<string, string> = {
+  user_default: '个人默认',
+  global_default: '全局默认',
+  recommendation_fallback: '推荐兜底',
+  none: '未配置',
+}
+
+const modelCapabilityGroups = computed(() => [
+  { type: 'text', label: '生文字', models: modelManagerConfigs.value.filter((model) => ['text', 'multimodal'].includes(model.model_type)) },
+  { type: 'image', label: '生图片', models: modelManagerConfigs.value.filter((model) => ['image', 'multimodal'].includes(model.model_type)) },
+  { type: 'video', label: '生视频', models: modelManagerConfigs.value.filter((model) => ['video', 'multimodal'].includes(model.model_type)) },
+])
+
+function modelOptionLabel(model: AIModelConfigData) {
+  const badges = [model.provider, model.is_default ? '全局默认' : '', model.recommendation_label || ''].filter(Boolean)
+  return `${model.name}${badges.length ? ` · ${badges.join(' · ')}` : ''}`
+}
+
+function modelHint(model: AIModelConfigData | null, fallback: string) {
+  if (!model) return fallback
+  const parts = [model.recommendation_label, model.recommendation_reason, model.risk_note].filter(Boolean)
+  return parts.length ? parts.join('｜') : `${model.name} 当前可用于${modelTypeLabels[model.model_type] || model.model_type}任务。`
+}
+
+function resolvedDefaultName(modelType: string) {
+  const bucket = (modelDefaults.value as Record<string, any>)[modelType]
+  return bucket?.resolved?.name || '未配置'
+}
+
+function resolvedDefaultLabel(modelType: string) {
+  const bucket = (modelDefaults.value as Record<string, any>)[modelType]
+  return modelResolutionLabels[bucket?.resolved?.resolved_by || 'none'] || '未配置'
+}
 
 // Chat
 interface ChatMessage {
@@ -360,38 +487,84 @@ async function loadPromptTemplates() {
 
 async function loadGenerationSidecarData() {
   try {
-    const [coverRes, videoRes, textModelRes, imageModelRes, videoModelRes] = await Promise.all([
+    const [coverRes, videoRes, textModelRes, imageModelRes, videoModelRes, defaultsRes] = await Promise.all([
       listPromptTemplates('', 'image_cover'),
       listPromptTemplates('', 'video_clip'),
-      listModelConfigs('text'),
-      listModelConfigs('image'),
-      listModelConfigs('video'),
+      listModelCatalog('text'),
+      listModelCatalog('image'),
+      listModelCatalog('video'),
+      getModelDefaults(),
     ])
     coverPromptTemplates.value = coverRes.data || []
     videoPromptTemplates.value = videoRes.data || []
     textModelConfigs.value = textModelRes.data || []
     imageModelConfigs.value = imageModelRes.data || []
     videoModelConfigs.value = videoModelRes.data || []
+    modelDefaults.value = defaultsRes.data || {}
     if (!selectedCoverPromptTemplateId.value) selectedCoverPromptTemplateId.value = coverPromptTemplates.value[0]?.id || 0
     if (!selectedVideoPromptTemplateId.value) selectedVideoPromptTemplateId.value = videoPromptTemplates.value[0]?.id || 0
-    if (!selectedTextModelConfigId.value) selectedTextModelConfigId.value = textModelConfigs.value[0]?.id || 0
-    if (!selectedCoverModelConfigId.value) selectedCoverModelConfigId.value = imageModelConfigs.value[0]?.id || 0
-    if (!selectedVideoModelConfigId.value) selectedVideoModelConfigId.value = videoModelConfigs.value[0]?.id || 0
+    const resolvedText = modelDefaults.value.text?.resolved?.id || textModelConfigs.value[0]?.id || 0
+    const resolvedImage = modelDefaults.value.image?.resolved?.id || imageModelConfigs.value[0]?.id || 0
+    const resolvedVideo = modelDefaults.value.video?.resolved?.id || videoModelConfigs.value[0]?.id || 0
+    if (!selectedTextModelConfigId.value || !textModelConfigs.value.some((model) => model.id === selectedTextModelConfigId.value)) selectedTextModelConfigId.value = resolvedText
+    if (!selectedCoverModelConfigId.value || !imageModelConfigs.value.some((model) => model.id === selectedCoverModelConfigId.value)) selectedCoverModelConfigId.value = resolvedImage
+    if (!selectedVideoModelConfigId.value || !videoModelConfigs.value.some((model) => model.id === selectedVideoModelConfigId.value)) selectedVideoModelConfigId.value = resolvedVideo
   } catch {
-    coverPromptTemplates.value = []
-    videoPromptTemplates.value = []
-    textModelConfigs.value = []
-    imageModelConfigs.value = []
-    videoModelConfigs.value = []
+    try {
+      const [coverRes, videoRes, textModelRes, imageModelRes, videoModelRes] = await Promise.all([
+        listPromptTemplates('', 'image_cover'),
+        listPromptTemplates('', 'video_clip'),
+        listModelConfigs('text'),
+        listModelConfigs('image'),
+        listModelConfigs('video'),
+      ])
+      coverPromptTemplates.value = coverRes.data || []
+      videoPromptTemplates.value = videoRes.data || []
+      textModelConfigs.value = textModelRes.data || []
+      imageModelConfigs.value = imageModelRes.data || []
+      videoModelConfigs.value = videoModelRes.data || []
+      if (!selectedTextModelConfigId.value) selectedTextModelConfigId.value = textModelConfigs.value[0]?.id || 0
+      if (!selectedCoverModelConfigId.value) selectedCoverModelConfigId.value = imageModelConfigs.value[0]?.id || 0
+      if (!selectedVideoModelConfigId.value) selectedVideoModelConfigId.value = videoModelConfigs.value[0]?.id || 0
+    } catch {
+      coverPromptTemplates.value = []
+      videoPromptTemplates.value = []
+      textModelConfigs.value = []
+      imageModelConfigs.value = []
+      videoModelConfigs.value = []
+    }
   }
 }
 
 async function loadModelManagerConfigs() {
   try {
-    const res = await listModelConfigs()
+    const res = await listModelCatalog()
     modelManagerConfigs.value = res.data || []
   } catch {
-    modelManagerConfigs.value = []
+    try {
+      const res = await listModelConfigs()
+      modelManagerConfigs.value = res.data || []
+    } catch {
+      modelManagerConfigs.value = []
+    }
+  }
+}
+
+async function loadModelGateways() {
+  try {
+    const res = await listModelGateways()
+    modelGateways.value = res.data || []
+  } catch {
+    modelGateways.value = []
+  }
+}
+
+async function loadModelDefaults() {
+  try {
+    const res = await getModelDefaults()
+    modelDefaults.value = res.data || {}
+  } catch {
+    modelDefaults.value = {}
   }
 }
 
@@ -409,6 +582,8 @@ loadPromptTemplates()
 loadPromptManagerTemplates()
 loadGenerationSidecarData()
 loadModelManagerConfigs()
+loadModelGateways()
+loadModelDefaults()
 watch(selectedPromptCategory, () => loadPromptTemplates())
 watch(promptManagerCategoryKey, () => {
   resetPromptTemplateForm()
@@ -461,6 +636,9 @@ function resetPromptTemplateForm() {
     id: 0,
     key: '',
     category_key: promptManagerCategoryKey.value || selectedPromptCategory.value || 'knowledge_talk',
+    platform: '',
+    scene: '',
+    step: '',
     name: '',
     description: '',
     scenario: '',
@@ -471,8 +649,10 @@ function resetPromptTemplateForm() {
     is_default: false,
     is_active: true,
     sort_order: 0,
+    change_note: '',
   })
   promptTemplateRulesText.value = ''
+  promptTemplateVersions.value = []
 }
 
 async function refreshPromptData() {
@@ -481,6 +661,127 @@ async function refreshPromptData() {
   await loadPromptManagerTemplates()
   await loadGenerationSidecarData()
   await loadModelManagerConfigs()
+  await loadModelGateways()
+  await loadModelDefaults()
+}
+
+function resetModelGatewayForm() {
+  Object.assign(modelGatewayForm, {
+    name: '',
+    scope: 'user',
+    provider_type: 'openai_compatible',
+    base_url: 'https://api.openai.com/v1',
+    api_key: '',
+    is_active: true,
+  })
+}
+
+async function handleCreateModelGateway() {
+  if (isSavingModelGateway.value) return
+  if (!modelGatewayForm.name?.trim() || !modelGatewayForm.base_url?.trim() || !modelGatewayForm.api_key?.trim()) {
+    modelGatewayFeedback.value = { type: 'error', message: '请填写配置名称、Base URL 和 API Key。' }
+    return
+  }
+  isSavingModelGateway.value = true
+  try {
+    await createModelGateway(modelGatewayForm)
+    modelGatewayFeedback.value = { type: 'success', message: '模型中转已创建，请点击“测试”或“同步模型”。' }
+    resetModelGatewayForm()
+    await refreshPromptData()
+  } catch (err: any) {
+    modelGatewayFeedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '创建模型中转失败。' }
+  } finally {
+    isSavingModelGateway.value = false
+  }
+}
+
+async function handleTestModelGateway(gateway: ModelGatewayData) {
+  if (!gateway.id) return
+  modelGatewayBusy[gateway.id] = true
+  try {
+    const res = await testModelGateway(gateway.id)
+    modelGatewayFeedback.value = { type: res.data?.ok ? 'success' : 'error', message: res.data?.message || res.message || '测试完成。' }
+    await loadModelGateways()
+  } catch (err: any) {
+    modelGatewayFeedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '测试连接失败。' }
+  } finally {
+    modelGatewayBusy[gateway.id] = false
+  }
+}
+
+async function handleSyncModelGateway(gateway: ModelGatewayData) {
+  if (!gateway.id) return
+  modelGatewayBusy[gateway.id] = true
+  try {
+    const res = await syncModelGatewayModels(gateway.id)
+    modelGatewayFeedback.value = { type: 'success', message: res.message || `已同步 ${res.data?.length || 0} 个模型。` }
+    await refreshPromptData()
+  } catch (err: any) {
+    modelGatewayFeedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '同步模型失败。' }
+  } finally {
+    modelGatewayBusy[gateway.id] = false
+  }
+}
+
+async function handleDeleteModelGateway(gateway: ModelGatewayData) {
+  if (!gateway.id) return
+  const confirmed = await requestConfirmation({
+    title: '停用模型中转',
+    message: `确认停用中转「${gateway.name}」及其同步模型吗？停用后相关生成任务将不再使用该中转。`,
+    confirmText: '停用',
+  })
+  if (!confirmed) return
+  try {
+    await deleteModelGateway(gateway.id)
+    modelGatewayFeedback.value = { type: 'success', message: `已停用中转「${gateway.name}」。` }
+    await refreshPromptData()
+  } catch (err: any) {
+    modelGatewayFeedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '停用中转失败。' }
+  }
+}
+
+async function handleSetPersonalDefault(modelType: string, modelId: number) {
+  try {
+    await setModelDefault(modelType, modelId)
+    modelGatewayFeedback.value = { type: 'success', message: `个人默认${modelTypeLabels[modelType] || modelType}模型已更新。` }
+    await refreshPromptData()
+  } catch (err: any) {
+    modelGatewayFeedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '设置个人默认失败。' }
+  }
+}
+
+async function handleSetGlobalDefault(modelType: string, modelId: number) {
+  try {
+    await setGlobalModelDefault(modelType, modelId)
+    modelGatewayFeedback.value = { type: 'success', message: `全局默认${modelTypeLabels[modelType] || modelType}模型已更新。` }
+    await refreshPromptData()
+  } catch (err: any) {
+    modelGatewayFeedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '设置全局默认失败。' }
+  }
+}
+
+async function handleUpdateModelCapability(model: AIModelConfigData, modelType: string) {
+  if (!model.id) return
+  try {
+    await updateModelCatalogItem(model.id, {
+      model_type: modelType,
+      recommendation_label: model.recommendation_label || '',
+      recommendation_reason: model.recommendation_reason || '',
+      risk_note: model.risk_note || '',
+      sort_order: model.sort_order || 0,
+      is_active: modelType !== 'unknown',
+    })
+    modelGatewayFeedback.value = { type: 'success', message: `模型「${model.name}」能力已更新。` }
+    await refreshPromptData()
+  } catch (err: any) {
+    modelGatewayFeedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '更新模型能力失败。' }
+  }
+}
+
+function handleUpdateModelCapabilityFromEvent(model: AIModelConfigData, event: Event) {
+  const target = event.target as HTMLSelectElement | null
+  if (!target) return
+  handleUpdateModelCapability(model, target.value)
 }
 
 function resetModelConfigForm() {
@@ -521,7 +822,13 @@ async function handleSaveModelConfig() {
 }
 
 async function handleDeleteModelConfig(model: AIModelConfigData) {
-  if (!model.id || !window.confirm(`确认停用模型「${model.name}」吗？`)) return
+  if (!model.id) return
+  const confirmed = await requestConfirmation({
+    title: '停用模型',
+    message: `确认停用模型「${model.name}」吗？停用后它不会再出现在生成模型选择中。`,
+    confirmText: '停用',
+  })
+  if (!confirmed) return
   try {
     await deleteModelConfig(model.id)
     promptManagerFeedback.value = { type: 'success', message: `已停用模型「${model.name}」。` }
@@ -557,7 +864,12 @@ async function handleSavePromptCategory() {
 }
 
 async function handleDeletePromptCategory(category: PromptTemplateCategoryData) {
-  if (!window.confirm(`确认停用提示词分类「${category.name}」吗？该分类下模板也会停用。`)) return
+  const confirmed = await requestConfirmation({
+    title: '停用提示词分类',
+    message: `确认停用提示词分类「${category.name}」吗？该分类下模板也会停用。`,
+    confirmText: '停用',
+  })
+  if (!confirmed) return
   try {
     await deletePromptTemplateCategory(category.key)
     promptManagerFeedback.value = { type: 'success', message: `已停用分类「${category.name}」。` }
@@ -575,11 +887,17 @@ async function editPromptTemplate(template: PromptTemplateData) {
     editingPromptTemplateId.value = detail.id
     Object.assign(promptTemplateForm, {
       ...detail,
+      platform: detail.platform || '',
+      scene: detail.scene || '',
+      step: detail.step || '',
       writing_rules: detail.writing_rules || [],
       prompt_body: detail.prompt_body || '',
       is_active: detail.is_active !== false,
+      change_note: '',
     })
     promptTemplateRulesText.value = (detail.writing_rules || []).join('\n')
+    const versions = await listPromptTemplateVersions(template.id)
+    promptTemplateVersions.value = versions.data.items || []
   } catch (err: any) {
     promptManagerFeedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '读取模板详情失败。' }
   }
@@ -595,6 +913,7 @@ async function handleSavePromptTemplate() {
   try {
     const payload: PromptTemplateData = {
       ...promptTemplateForm,
+      change_note: promptTemplateForm.change_note || (editingPromptTemplateId.value ? '后台更新模板' : '后台创建模板'),
       writing_rules: promptTemplateRulesText.value.split('\n').map((item) => item.trim()).filter(Boolean),
     }
     if (editingPromptTemplateId.value) {
@@ -615,7 +934,12 @@ async function handleSavePromptTemplate() {
 }
 
 async function handleDeletePromptTemplate(template: PromptTemplateData) {
-  if (!window.confirm(`确认停用提示词模板「${template.name}」吗？`)) return
+  const confirmed = await requestConfirmation({
+    title: '停用提示词模板',
+    message: `确认停用提示词模板「${template.name}」吗？停用后前端生成页不会继续选择它。`,
+    confirmText: '停用',
+  })
+  if (!confirmed) return
   try {
     await deletePromptTemplate(template.id)
     promptManagerFeedback.value = { type: 'success', message: `已停用模板「${template.name}」。` }
@@ -662,6 +986,8 @@ async function handleParse() {
       res = await parseUrl(urlInput.value.trim())
     } else if (inputMode.value === 'text') {
       if (!textInput.value.trim()) return
+      extractedContent.value = textInput.value.trim()
+      activeTab.value = 'extracted'
       res = await parseText(textInput.value.trim())
     } else if (inputMode.value === 'file' && fileInput.value) {
       res = await parseFile(fileInput.value)
@@ -677,7 +1003,7 @@ async function handleParse() {
       return
     }
 
-    extractedContent.value = res.data.extracted_content
+    extractedContent.value = res.data?.extracted_content || extractedContent.value
     activeTab.value = 'extracted'
 
     addChatMessage('assistant', '✅ 内容已成功提取！你可以在「内容提取」版块中查看和编辑。准备好后，选择一个 IP 人设，然后点击「生成全案」。')
@@ -897,6 +1223,31 @@ async function handleBuildShortVideoWorkflow() {
   }
 }
 
+function buildVideoAipParams() {
+  return {
+    title: videoAipProductName.value || videoAipCharacterNotes.value || undefined,
+    workflow_type: videoWorkflowType.value,
+    source_content: extractedContent.value,
+    script_content: scriptContent.value,
+    product_name: videoAipProductName.value || shortVideoForm.subject_name,
+    character_notes: videoAipCharacterNotes.value,
+    media_notes: analyzedAssets.value.map((asset) => `${asset.filename || '素材'}：${asset.description || ''}`),
+    source_assets: analyzedAssets.value.map((asset) => ({
+      filename: asset.filename,
+      path: asset.path,
+      type: asset.type,
+      description: asset.description,
+    })),
+    aspect_ratio: videoAspectRatio.value,
+    duration: videoDuration.value,
+    style: shortVideoForm.style,
+    user_requirements: extraRequirements.value || shortVideoForm.user_input,
+    text_model_config_id: selectedTextModelConfigId.value || undefined,
+    video_prompt_template_id: selectedVideoPromptTemplateId.value || undefined,
+    video_model_config_id: selectedVideoModelConfigId.value || undefined,
+  }
+}
+
 async function handleGenerateVideoAipPlan() {
   if (isVideoAipPlanning.value) return
   const userInput = extractedContent.value.trim() || shortVideoForm.user_input.trim() || scriptContent.value.trim()
@@ -912,27 +1263,231 @@ async function handleGenerateVideoAipPlan() {
   isVideoAipPlanning.value = true
   activeTab.value = 'video'
   try {
-    const res = await generateVideoAipPlan({
-      workflow_type: videoWorkflowType.value,
-      source_content: extractedContent.value,
-      script_content: scriptContent.value,
-      product_name: videoAipProductName.value || shortVideoForm.subject_name,
-      character_notes: videoAipCharacterNotes.value,
-      media_notes: analyzedAssets.value.map((asset) => `${asset.filename || '素材'}：${asset.description || ''}`),
-      aspect_ratio: videoAspectRatio.value,
-      duration: videoDuration.value,
-      style: shortVideoForm.style,
-      user_requirements: extraRequirements.value || shortVideoForm.user_input,
-      video_prompt_template_id: selectedVideoPromptTemplateId.value || undefined,
-      video_model_config_id: selectedVideoModelConfigId.value || undefined,
-    })
+    const res = await generateVideoAipPlan(buildVideoAipParams())
     videoAipPlan.value = res.data
+    videoAipProject.value = null
     videoPrompts.value = res.data.steps?.map((step: any) => `## ${step.title}\n${step.prompt}`).join('\n\n') || ''
     addChatMessage('assistant', `✅ 已生成「${res.data.title}」，可在视频 AIP 板块逐步复制或应用提示词。`)
   } catch (err: any) {
     addChatMessage('assistant', `❌ 视频 AIP 链路生成失败：${err?.response?.data?.detail || err.message}`)
   } finally {
     isVideoAipPlanning.value = false
+  }
+}
+
+async function handleCreateVideoAipProject() {
+  if (isSavingVideoAipProject.value) return
+  const userInput = extractedContent.value.trim() || shortVideoForm.user_input.trim() || scriptContent.value.trim() || videoAipCharacterNotes.value.trim()
+  if (!userInput) {
+    addChatMessage('assistant', '⚠️ 请先输入需求、上传素材，或填写人物关系后再创建 AIP 项目。')
+    return
+  }
+  isSavingVideoAipProject.value = true
+  activeTab.value = 'video'
+  try {
+    const res = await createVideoAipProject(buildVideoAipParams())
+    videoAipProject.value = res.data
+    videoAipPlan.value = res.data.plan || null
+    videoPrompts.value = (res.data.steps || []).map((step: VideoAipStepTask) => `## ${step.title}\n${step.prompt}`).join('\n\n')
+    addChatMessage('assistant', `✅ 已创建视频 AIP 项目「${res.data.title}」，步骤状态已保存。`)
+  } catch (err: any) {
+    addChatMessage('assistant', `❌ 创建视频 AIP 项目失败：${err?.response?.data?.detail || err.message}`)
+  } finally {
+    isSavingVideoAipProject.value = false
+  }
+}
+
+async function markVideoAipStep(step: VideoAipStepTask | any, status: 'running' | 'succeeded' | 'failed') {
+  if (!videoAipProject.value || !step.id) return
+  try {
+    const res = await updateVideoAipStep(videoAipProject.value.id, step.id, {
+      status,
+      output: status === 'succeeded' ? { prompt: step.prompt, completed_at: new Date().toISOString() } : {},
+      error_message: status === 'failed' ? '用户手动标记失败' : '',
+    })
+    videoAipProject.value = res.data
+    addChatMessage('system', `已更新「${step.title}」为 ${status}。`)
+  } catch (err: any) {
+    addChatMessage('assistant', `❌ 更新 AIP 步骤失败：${err?.response?.data?.detail || err.message}`)
+  }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function patchVideoAipStep(stepId: number, patch: Partial<VideoAipStepTask>) {
+  if (!videoAipProject.value?.steps) return
+  const idx = videoAipProject.value.steps.findIndex((item: any) => item.id === stepId)
+  if (idx < 0) return
+  videoAipProject.value.steps[idx] = {
+    ...videoAipProject.value.steps[idx],
+    ...patch,
+    output: {
+      ...(videoAipProject.value.steps[idx].output || {}),
+      ...(patch.output || {}),
+    },
+  }
+}
+
+function isRemoteMediaUrl(url: string) {
+  return /^https?:\/\//i.test(url)
+}
+
+function videoAipArtifactUrl(step: any) {
+  const output = step?.output || {}
+  if (output.media_file_url) return output.media_file_url
+  if (output.media_url && isRemoteMediaUrl(output.media_url)) return output.media_url
+  if (output.task_id && (step?.status === 'succeeded' || step?.displayStatus === 'succeeded')) return videoTaskMediaFileUrl(output.task_id)
+  return ''
+}
+
+function isVideoAipVideoStep(step: any) {
+  const output = step?.output || {}
+  return output.media_type === 'video' || output.task_type === 'video' || step.task_type === 'video'
+}
+
+function videoAipProgressText(step: any) {
+  const output = step?.output || {}
+  if (typeof output.progress !== 'number') return ''
+  return `${Math.round(output.progress * 100)}%`
+}
+
+async function pollVideoAipStepTask(step: VideoAipStepTask | any, taskId: string) {
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    await sleep(attempt === 0 ? 1200 : 2000)
+    const task = await getVideoTask(taskId)
+    const output = {
+      ...(step.output || {}),
+      task_id: task.task_id,
+      task_status: task.status,
+      progress: task.progress,
+      current_event: task.current_event,
+      media_type: task.media_type || step.output?.media_type,
+      media_url: task.media_url,
+      media_path: task.media_path,
+      media_file_url: (task.media_path || task.video_path) ? videoTaskMediaFileUrl(task.task_id) : task.media_url,
+      video_path: task.video_path,
+      duration: task.duration,
+      file_size: task.file_size,
+    }
+    patchVideoAipStep(step.id, { status: task.status as VideoAipStepTask['status'], output })
+
+    if (task.status === 'succeeded') {
+      if (videoAipProject.value) {
+        const res = await updateVideoAipStep(videoAipProject.value.id, step.id, {
+          status: 'succeeded',
+          output,
+          error_message: '',
+        })
+        videoAipProject.value = res.data
+      }
+      addChatMessage('assistant', `✅ 「${step.title}」真实模型任务已完成，产物已回写到 AIP 步骤。`)
+      return
+    }
+
+    if (task.status === 'failed') {
+      if (videoAipProject.value) {
+        const res = await updateVideoAipStep(videoAipProject.value.id, step.id, {
+          status: 'failed',
+          output,
+          error_message: task.error || '模型任务失败',
+        })
+        videoAipProject.value = res.data
+      }
+      addChatMessage('assistant', `❌ 「${step.title}」真实模型任务失败：${task.error || '未知错误'}`)
+      return
+    }
+  }
+  addChatMessage('assistant', `⚠️ 「${step.title}」任务仍在运行，可稍后刷新项目查看结果。`)
+}
+
+async function handleRunVideoAipStep(step: VideoAipStepTask | any) {
+  if (!videoAipProject.value || !step.id || runningVideoAipStepIds[step.id]) return
+  runningVideoAipStepIds[step.id] = true
+  try {
+    const res = await runVideoAipStep(videoAipProject.value.id, step.id)
+    videoAipProject.value = res.data.project
+    const taskId = res.data.task.task_id
+    addChatMessage('assistant', `🚀 已提交「${step.title}」真实${res.data.task.media_type === 'video' ? '视频' : '图片'}模型任务，开始轮询生成结果。`)
+    await pollVideoAipStepTask(step, taskId)
+  } catch (err: any) {
+    addChatMessage('assistant', `❌ 执行 AIP 步骤失败：${err?.response?.data?.detail?.message || err?.response?.data?.detail || err.message}`)
+  } finally {
+    runningVideoAipStepIds[step.id] = false
+  }
+}
+
+async function pollVideoAipProject(projectId: number) {
+  for (let attempt = 0; attempt < 240; attempt += 1) {
+    await sleep(attempt === 0 ? 1200 : 3000)
+    const res = await getVideoAipProject(projectId)
+    videoAipProject.value = res.data
+    videoAipPlan.value = res.data.plan || videoAipPlan.value
+    if (res.data.status === 'succeeded') {
+      addChatMessage('assistant', `✅ 视频 AIP 项目「${res.data.title}」已全部执行完成。`)
+      return
+    }
+    if (res.data.status === 'failed') {
+      addChatMessage('assistant', `❌ 视频 AIP 项目「${res.data.title}」执行中断，请查看失败步骤后重试。`)
+      return
+    }
+  }
+  addChatMessage('assistant', '⚠️ 视频 AIP 项目仍在后台执行，可稍后刷新项目状态。')
+}
+
+async function handleRunNextVideoAipStep() {
+  if (!videoAipProject.value || isRunningVideoAipNext.value) return
+  isRunningVideoAipNext.value = true
+  try {
+    const res = await runNextVideoAipStep(videoAipProject.value.id)
+    const task = res.data?.task
+    videoAipProject.value = res.data?.project || res.data
+    videoAipPlan.value = videoAipProject.value?.plan || videoAipPlan.value
+    if (task?.task_id) {
+      const step = videoAipProject.value?.steps?.find((item: any) => item.output?.task_id === task.task_id)
+      addChatMessage('assistant', '🚀 已提交下一步真实媒体任务，开始轮询结果。')
+      if (step) await pollVideoAipStepTask(step, task.task_id)
+    } else {
+      addChatMessage('assistant', res.message || '没有待执行步骤。')
+    }
+  } catch (err: any) {
+    addChatMessage('assistant', `❌ 执行下一步失败：${err?.response?.data?.detail?.message || err?.response?.data?.detail || err.message}`)
+  } finally {
+    isRunningVideoAipNext.value = false
+  }
+}
+
+async function handleRunAllVideoAipSteps() {
+  if (!videoAipProject.value || isRunningVideoAipAll.value) return
+  isRunningVideoAipAll.value = true
+  try {
+    const projectId = videoAipProject.value.id
+    const res = await runAllVideoAipSteps(projectId)
+    videoAipProject.value = res.data
+    videoAipPlan.value = res.data.plan || videoAipPlan.value
+    addChatMessage('assistant', '🚀 已开始后台顺序执行全部 AIP 步骤，页面会自动刷新项目状态。')
+    await pollVideoAipProject(projectId)
+  } catch (err: any) {
+    addChatMessage('assistant', `❌ 执行全部失败：${err?.response?.data?.detail?.message || err?.response?.data?.detail || err.message}`)
+  } finally {
+    isRunningVideoAipAll.value = false
+  }
+}
+
+async function handleRetryVideoAipStep(step: VideoAipStepTask | any) {
+  if (!videoAipProject.value || !step.id || runningVideoAipStepIds[step.id]) return
+  runningVideoAipStepIds[step.id] = true
+  try {
+    const res = await retryVideoAipStep(videoAipProject.value.id, step.id)
+    videoAipProject.value = res.data.project
+    const taskId = res.data.task.task_id
+    addChatMessage('assistant', `🔁 已重试「${step.title}」并提交真实模型任务。`)
+    await pollVideoAipStepTask(step, taskId)
+  } catch (err: any) {
+    addChatMessage('assistant', `❌ 重试 AIP 步骤失败：${err?.response?.data?.detail?.message || err?.response?.data?.detail || err.message}`)
+  } finally {
+    runningVideoAipStepIds[step.id] = false
   }
 }
 
@@ -953,7 +1508,7 @@ function applyShortVideoStepToTab(stepKey: string, prompt: string) {
   addChatMessage('system', `已应用「${stepKey}」提示词到对应内容版块。`)
 }
 
-function applyVideoAipStep(step: { key: string; prompt: string; title: string }) {
+function applyVideoAipStep(step: { key?: string; step_key?: string; prompt: string; title: string }) {
   videoPrompts.value = step.prompt
   activeTab.value = 'video'
   addChatMessage('system', `已应用「${step.title}」到视频提示词版块。`)
@@ -961,7 +1516,7 @@ function applyVideoAipStep(step: { key: string; prompt: string; title: string })
 
 function copyVideoAipPlan() {
   if (!videoAipPlan.value) return
-  copyToClipboard(videoAipPlan.value.steps.map((step) => `## ${step.title}\n目标：${step.goal}\n\n${step.prompt}`).join('\n\n'))
+  copyToClipboard(videoAipPlan.value.steps.map((step: any) => `## ${step.title}\n目标：${step.goal}\n\n${step.prompt}`).join('\n\n'))
 }
 
 function safeFilename(value: string) {
@@ -1047,7 +1602,7 @@ function buildShortVideoArchiveMarkdown() {
     lines.push('')
     lines.push('## 需要补充的信息')
     lines.push('')
-    workflow.questions.forEach((question, idx) => {
+    workflow.questions.forEach((question: any, idx: number) => {
       lines.push(`${idx + 1}. ${question}`)
     })
   }
@@ -1055,7 +1610,7 @@ function buildShortVideoArchiveMarkdown() {
   if (workflow.steps.length) {
     lines.push('')
     lines.push('## 工作流步骤')
-    workflow.steps.forEach((step, idx) => {
+    workflow.steps.forEach((step: any, idx: number) => {
       lines.push('')
       lines.push(`### ${idx + 1}. ${step.label}`)
       lines.push('')
@@ -1071,7 +1626,7 @@ function buildShortVideoArchiveMarkdown() {
     lines.push('')
     lines.push('## 下一步建议')
     lines.push('')
-    workflow.next_actions.forEach((action, idx) => {
+    workflow.next_actions.forEach((action: any, idx: number) => {
       lines.push(`${idx + 1}. ${action}`)
     })
   }
@@ -1103,7 +1658,7 @@ function exportShortVideoWorkflowMarkdown() {
 
 async function saveShortVideoWorkflowProject() {
   const workflow = strategyOutputs.shortVideoWorkflow
-  if (isSavingShortVideoProject.value || !workflow) return
+  if (isSavingShortVideoProject.value || !workflow) return 0
 
   const markdown = buildShortVideoArchiveMarkdown()
   const title = shortVideoForm.subject_name || workflow.variables['主体名称'] || workflow.intent.label
@@ -1126,11 +1681,34 @@ async function saveShortVideoWorkflowProject() {
       workflow,
       archive_markdown: markdown,
     })
+    savedShortVideoProjectId.value = res.data.id
     addChatMessage('assistant', `✅ 已保存到短视频项目库：#${res.data.id} ${res.data.title}`)
+    return res.data.id
   } catch (err: any) {
     addChatMessage('assistant', `❌ 保存短视频项目失败：${err?.response?.data?.detail || err.message}`)
+    return 0
   } finally {
     isSavingShortVideoProject.value = false
+  }
+}
+
+async function handleCreateVideoAipFromShortVideoProject() {
+  const workflow = strategyOutputs.shortVideoWorkflow
+  if (isCreatingAipFromShortVideo.value || !workflow) return
+  isCreatingAipFromShortVideo.value = true
+  activeTab.value = 'video'
+  try {
+    const projectId = savedShortVideoProjectId.value || await saveShortVideoWorkflowProject()
+    if (!projectId) return
+    const res = await createVideoAipProjectFromShortVideo(projectId)
+    videoAipProject.value = res.data
+    videoAipPlan.value = res.data.plan || null
+    videoPrompts.value = (res.data.steps || []).map((step: VideoAipStepTask) => `## ${step.title}\n${step.prompt}`).join('\n\n')
+    addChatMessage('assistant', `✅ 已从短视频工作流创建视频 AIP 项目「${res.data.title}」。`)
+  } catch (err: any) {
+    addChatMessage('assistant', `❌ 转入视频 AIP 失败：${err?.response?.data?.detail || err.message}`)
+  } finally {
+    isCreatingAipFromShortVideo.value = false
   }
 }
 
@@ -1267,6 +1845,7 @@ interface ReversalDramaHistoryItem {
 
 const props = defineProps<{
   currentUser?: WorkspaceUser
+  initialMode?: WorkspaceMode
 }>()
 
 const emit = defineEmits<{
@@ -1274,21 +1853,51 @@ const emit = defineEmits<{
 }>()
 
 const REVERSAL_HISTORY_KEY = 'ip-case-reversal-drama-history'
+const router = useRouter()
 const isGuestUser = computed(() => props.currentUser?.isGuest === true && !props.currentUser?.token)
-const isAdminUser = computed(() => props.currentUser?.is_admin === true)
+const isAdminUser = computed(() => props.currentUser?.is_admin === true || (Boolean(props.currentUser?.token) && props.currentUser?.is_admin !== false))
 
 const workspaceMode = ref<WorkspaceMode>('home')
+const liveStatusMessage = computed(() => {
+  return modelGatewayFeedback.value?.message
+    || promptManagerFeedback.value?.message
+    || dramaFeedback.value?.message
+    || ''
+})
 
-const workspaceNavItemsBase: Array<{ key: WorkspaceMode; label: string; description: string; adminOnly?: boolean }> = [
-  { key: 'home', label: 'Dashboard', description: '任务总览' },
-  { key: 'ip', label: 'IP 全案', description: '内容生产流' },
-  { key: 'sprint1', label: 'IP 档案库', description: '全案底座' },
-  { key: 'reversal', label: '反转剧编剧', description: '短剧工坊' },
-  { key: 'teleprompter', label: '在线提词器', description: '直播控制台' },
-  { key: 'prompts', label: '提示词管理', description: '后台模板', adminOnly: true },
-]
+const confirmState = reactive({
+  open: false,
+  title: '',
+  message: '',
+  confirmText: '确认',
+  cancelText: '取消',
+  tone: 'danger' as 'danger' | 'warning' | 'default',
+})
+let confirmResolver: ((value: boolean) => void) | null = null
 
-const workspaceNavItems = computed(() => workspaceNavItemsBase.filter((item) => !item.adminOnly || isAdminUser.value))
+function requestConfirmation(options: {
+  title: string
+  message: string
+  confirmText?: string
+  cancelText?: string
+  tone?: 'danger' | 'warning' | 'default'
+}) {
+  confirmState.open = true
+  confirmState.title = options.title
+  confirmState.message = options.message
+  confirmState.confirmText = options.confirmText || '确认'
+  confirmState.cancelText = options.cancelText || '取消'
+  confirmState.tone = options.tone || 'danger'
+  return new Promise<boolean>((resolve) => {
+    confirmResolver = resolve
+  })
+}
+
+function resolveConfirmation(value: boolean) {
+  confirmState.open = false
+  confirmResolver?.(value)
+  confirmResolver = null
+}
 
 const workspaceMetrics = computed(() => [
   { label: '输入素材', value: extractedContent.value.trim() ? '已解析' : '待解析', state: extractedContent.value.trim() ? 'done' : 'pending' },
@@ -1316,8 +1925,11 @@ const activeTabLabelMap: Record<typeof activeTab.value, string> = {
 const workspaceHashMap: Record<ToolKey, string> = {
   ip: 'ip',
   sprint1: 'sprint1',
+  platform: 'platform',
   reversal: 'reversal',
   teleprompter: 'teleprompter',
+  wechat: 'wechat',
+  models: 'models',
   prompts: 'prompts',
 }
 
@@ -1325,7 +1937,8 @@ const modeFromHash = (hash = window.location.hash): WorkspaceMode => {
   if (isGuestUser.value) return 'teleprompter'
   const value = hash.replace(/^#\/?/, '')
   if (value === 'prompts' && !isAdminUser.value) return 'home'
-  return value === 'ip' || value === 'sprint1' || value === 'reversal' || value === 'teleprompter' || value === 'prompts' ? value : 'home'
+  if (value === 'ip' || value === 'sprint1' || value === 'platform' || value === 'reversal' || value === 'teleprompter' || value === 'wechat' || value === 'models' || value === 'prompts') return value
+  return props.initialMode || 'home'
 }
 
 workspaceMode.value = modeFromHash()
@@ -1344,6 +1957,11 @@ function selectWorkspaceMode(mode: WorkspaceMode) {
 
   workspaceMode.value = mode
   const nextHash = mode === 'home' ? '' : `#/${workspaceHashMap[mode]}`
+  const nextPath = modePathMap[mode]
+  if (nextPath && router.currentRoute.value.path !== nextPath) {
+    router.push(nextPath)
+    return
+  }
   if (window.location.hash !== nextHash) {
     if (mode === 'home') {
       history.pushState(null, '', window.location.pathname + window.location.search)
@@ -1361,6 +1979,18 @@ function handleHashChange() {
 }
 
 watch(
+  () => props.initialMode,
+  (mode) => {
+    if (!mode || isGuestUser.value) return
+    if (mode === 'prompts' && !isAdminUser.value) {
+      workspaceMode.value = 'home'
+      return
+    }
+    workspaceMode.value = mode
+  }
+)
+
+watch(
   () => props.currentUser?.is_admin,
   () => {
     if (workspaceMode.value === 'prompts' && !isAdminUser.value) {
@@ -1372,10 +2002,6 @@ watch(
     }
   }
 )
-
-function goHome() {
-  selectWorkspaceMode('home')
-}
 
 function openVoiceTeleprompter(text = currentContent.value) {
   if (!text.trim()) {
@@ -1537,7 +2163,12 @@ function restoreReversalHistory(item: ReversalDramaHistoryItem) {
 }
 
 async function deleteReversalHistory(item: ReversalDramaHistoryItem) {
-  if (!window.confirm(`确认删除历史记录《${item.title}》吗？`)) return
+  const confirmed = await requestConfirmation({
+    title: '删除历史记录',
+    message: `确认删除历史记录《${item.title}》吗？删除后该条本地/云端历史将不再出现在列表中。`,
+    confirmText: '删除',
+  })
+  if (!confirmed) return
   try {
     await deleteReversalDramaHistory(item.id)
   } catch {
@@ -1553,7 +2184,12 @@ async function deleteReversalHistory(item: ReversalDramaHistoryItem) {
 
 async function clearReversalHistory() {
   if (!reversalHistory.value.length) return
-  if (!window.confirm('确认清空全部反转剧历史记录吗？此操作不可撤销。')) return
+  const confirmed = await requestConfirmation({
+    title: '清空反转剧历史',
+    message: '确认清空全部反转剧历史记录吗？此操作不可撤销。',
+    confirmText: '清空全部',
+  })
+  if (!confirmed) return
   try {
     await clearReversalDramaHistory()
   } catch {
@@ -1648,95 +2284,21 @@ function copyDramaMarkdown() {
 <template>
   <div class="workspace" :class="{ 'workspace-home': workspaceMode === 'home', 'workspace-ip': workspaceMode === 'ip' }">
     <!-- ═══ Header ═══ -->
-    <header class="workspace-header">
-      <div class="header-left">
-        <button
-          v-if="workspaceMode !== 'home' && workspaceMode !== 'ip' && !isGuestUser"
-          class="btn btn-ghost btn-sm btn-back-home"
-          @click="goHome"
-        >返回首页</button>
-        <div class="logo">
-          <span class="logo-icon">IP</span>
-          <h1 class="logo-text">IP<span class="text-gradient">全案</span>工作台</h1>
-        </div>
-        <span class="badge badge-accent">v1.0</span>
-        <div v-if="workspaceMode === 'home'" class="mode-switcher">
-          <button
-            class="tab-item"
-            :class="{ active: workspaceMode === 'home' }"
-            :disabled="isGuestUser"
-            :title="isGuestUser ? '游客只能使用提词器，请登录/注册解锁首页和工作台' : '首页'"
-            @click="selectWorkspaceMode('home')"
-          >Dashboard</button>
-          <button
-            class="tab-item"
-            :disabled="isGuestUser"
-            :title="isGuestUser ? '游客只能使用提词器，请登录/注册解锁 IP 全案' : 'IP 全案'"
-            @click="selectWorkspaceMode('ip')"
-          >IP 全案</button>
-          <button
-            class="tab-item"
-            :disabled="isGuestUser"
-            :title="isGuestUser ? '游客只能使用提词器，请登录/注册解锁全案底座' : '全案底座 Sprint1'"
-            @click="selectWorkspaceMode('sprint1')"
-          >IP 档案库</button>
-          <button
-            class="tab-item"
-            :disabled="isGuestUser"
-            :title="isGuestUser ? '游客只能使用提词器，请登录/注册解锁反转剧编剧' : '反转剧编剧'"
-            @click="selectWorkspaceMode('reversal')"
-          >反转剧编剧</button>
-          <button
-            class="tab-item"
-            @click="selectWorkspaceMode('teleprompter')"
-          >在线提词器</button>
-          <button
-            v-if="isAdminUser"
-            class="tab-item"
-            title="提示词管理"
-            @click="selectWorkspaceMode('prompts')"
-          >提示词管理</button>
-        </div>
-      </div>
-      <div v-if="workspaceMode !== 'ip'" class="header-right">
-        <div v-if="!isGuestUser" class="global-search" title="快捷搜索和命令入口">
-          <span>搜索功能 / 项目 / 任务</span>
-          <kbd>⌘K</kbd>
-        </div>
-        <div v-if="props.currentUser" class="user-chip" :title="props.currentUser.email">
-          <span>{{ props.currentUser.isGuest ? '游客' : props.currentUser.name }}</span>
-        </div>
-        <span v-if="isGuestUser" class="guest-scope-chip">仅提词器可用</span>
-        <button v-if="props.currentUser" class="btn btn-ghost btn-sm" @click="emit('logout')">退出</button>
-        <button
-          v-if="workspaceMode === 'reversal'"
-          class="btn btn-primary"
-          :title="dramaGenerateReason || '生成反转剧分镜脚本'"
-          :disabled="isGeneratingDrama || Boolean(dramaGenerateReason)"
-          @click="handleGenerateDrama"
-        >
-          <span v-if="isGeneratingDrama" class="typing-indicator" style="padding: 0;">
-            <span></span><span></span><span></span>
-          </span>
-          <template v-else>生成反转剧</template>
-        </button>
-      </div>
-    </header>
+    <WorkspaceHeader
+      :workspace-mode="workspaceMode"
+      :current-user="props.currentUser"
+      :is-guest-user="isGuestUser"
+      :is-admin-user="isAdminUser"
+      :is-generating-drama="isGeneratingDrama"
+      :drama-generate-reason="dramaGenerateReason"
+      @select="selectWorkspaceMode"
+      @logout="emit('logout')"
+      @generate-drama="handleGenerateDrama"
+    />
+    <p class="sr-only" role="status" aria-live="polite" :aria-label="liveStatusMessage"></p>
 
     <!-- ═══ Main Content ═══ -->
     <main class="workspace-main">
-      <nav v-if="!isGuestUser && workspaceMode !== 'home' && workspaceMode !== 'ip'" class="content-section-index" aria-label="内容生产模块导航">
-        <button
-          v-for="item in workspaceNavItems"
-          :key="item.key"
-          :class="{ active: workspaceMode === item.key }"
-          @click="selectWorkspaceMode(item.key)"
-        >
-          <strong>{{ item.label }}</strong>
-          <span>{{ item.description }}</span>
-        </button>
-      </nav>
-
       <!-- ─── Home Tool Cards ─── -->
       <section v-if="workspaceMode === 'home'" class="panel panel-full">
         <HomeToolCards @select="selectWorkspaceMode" />
@@ -1744,6 +2306,162 @@ function copyDramaMarkdown() {
 
       <section v-else-if="workspaceMode === 'sprint1'" class="panel panel-full">
         <Sprint1CaseWorkspace />
+      </section>
+
+      <section v-else-if="workspaceMode === 'platform'" class="panel panel-full">
+        <PlatformContentStudio
+          :initial-title="coverTitle || topicInput || '未命名平台内容'"
+          :initial-content="scriptContent || extractedContent"
+        />
+      </section>
+
+      <section v-else-if="workspaceMode === 'models'" class="panel panel-full glass-card prompt-manager-panel model-gateway-panel">
+        <div class="prompt-manager-head">
+          <div>
+            <span class="section-eyebrow">Model Gateway</span>
+            <h1>大模型中转与默认模型</h1>
+            <p>填写兼容 OpenAI 的 Base URL 和 API Key 后，系统自动拉取该 Key 下的可用模型，并按文字、图片、视频任务设置默认模型。</p>
+          </div>
+          <div class="prompt-manager-actions">
+            <button class="btn btn-ghost btn-sm" @click="refreshPromptData">刷新</button>
+            <button class="btn btn-primary btn-sm" @click="selectWorkspaceMode('ip')">返回生成工作台</button>
+          </div>
+        </div>
+
+        <div v-if="modelGatewayFeedback" class="prompt-feedback" :class="modelGatewayFeedback.type">
+          {{ modelGatewayFeedback.message }}
+        </div>
+
+        <div class="model-gateway-grid">
+          <section class="prompt-admin-card model-gateway-card">
+            <div class="prompt-admin-card-head">
+              <div>
+                <h3>添加大模型中转</h3>
+                <p>先测试连接，再同步模型列表。普通用户创建个人中转，管理员可创建全局中转。</p>
+              </div>
+              <button class="btn btn-ghost btn-sm" @click="resetModelGatewayForm">清空表单</button>
+            </div>
+
+            <div class="prompt-form model-gateway-form">
+              <div class="strategy-grid">
+                <div class="form-row">
+                  <label class="form-label">配置名称</label>
+                  <input v-model="modelGatewayForm.name" class="input" placeholder="例：我的中转账号" />
+                </div>
+                <div class="form-row">
+                  <label class="form-label">作用范围</label>
+                  <select v-model="modelGatewayForm.scope" class="input">
+                    <option value="user">个人可用</option>
+                    <option v-if="isAdminUser" value="global">全局可用</option>
+                  </select>
+                </div>
+                <div class="form-row strategy-grid-wide">
+                  <label class="form-label">Base URL</label>
+                  <input v-model="modelGatewayForm.base_url" class="input" placeholder="https://example.com/v1" />
+                </div>
+                <div class="form-row strategy-grid-wide">
+                  <label class="form-label">API Key</label>
+                  <input v-model="modelGatewayForm.api_key" class="input" type="password" autocomplete="off" placeholder="只加密保存，前端不回显明文" />
+                </div>
+              </div>
+              <div class="prompt-form-actions">
+                <label class="checkbox-row">
+                  <input v-model="modelGatewayForm.is_active" type="checkbox" />
+                  启用中转
+                </label>
+                <button class="btn btn-primary btn-sm" :disabled="isSavingModelGateway" @click="handleCreateModelGateway">
+                  {{ isSavingModelGateway ? '保存中...' : '创建中转' }}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section class="prompt-admin-card model-gateway-card">
+            <div class="prompt-admin-card-head">
+              <div>
+                <h3>默认模型策略</h3>
+                <p>生成时优先使用个人默认；没有个人默认时使用后台全局默认；仍没有则按推荐排序兜底。</p>
+              </div>
+            </div>
+            <div class="default-model-grid">
+              <article v-for="group in modelCapabilityGroups" :key="group.type" class="default-model-card">
+                <span>{{ group.label }}</span>
+                <strong>{{ resolvedDefaultName(group.type) }}</strong>
+                <small>{{ resolvedDefaultLabel(group.type) }}</small>
+                <div class="default-model-actions">
+                  <button
+                    v-for="model in group.models.slice(0, 3)"
+                    :key="model.id"
+                    class="btn btn-ghost btn-sm"
+                    @click="handleSetPersonalDefault(group.type, model.id || 0)"
+                  >设个人默认：{{ model.name }}</button>
+                </div>
+              </article>
+            </div>
+          </section>
+        </div>
+
+        <section class="prompt-admin-card model-gateway-card">
+          <div class="prompt-admin-card-head">
+            <div>
+              <h3>中转账号</h3>
+              <p>测试连接会验证 Key 是否可用；同步模型会调用 `/models` 并写入模型目录。</p>
+            </div>
+          </div>
+          <div class="model-gateway-list">
+            <article v-for="gateway in modelGateways" :key="gateway.id" class="model-gateway-item">
+              <div>
+                <strong>{{ gateway.name }}</strong>
+                <span>{{ gateway.scope === 'global' ? '全局' : '个人' }} · {{ gateway.provider_type || 'openai_compatible' }}</span>
+                <p>{{ gateway.base_url }}</p>
+                <small>Key：{{ gateway.api_key_masked || '未填写' }} · 状态：{{ gateway.last_test_status || 'untested' }} · 模型数：{{ gateway.last_model_count || 0 }}</small>
+              </div>
+              <div class="prompt-table-actions">
+                <button v-if="gateway.scope !== 'global' || isAdminUser" class="btn btn-ghost btn-sm" :disabled="Boolean(gateway.id && modelGatewayBusy[gateway.id])" @click="handleTestModelGateway(gateway)">测试</button>
+                <button v-if="gateway.scope !== 'global' || isAdminUser" class="btn btn-primary btn-sm" :disabled="Boolean(gateway.id && modelGatewayBusy[gateway.id])" @click="handleSyncModelGateway(gateway)">同步模型</button>
+                <button v-if="gateway.scope !== 'global' || isAdminUser" class="btn btn-ghost btn-sm" @click="handleDeleteModelGateway(gateway)">停用</button>
+              </div>
+            </article>
+            <div v-if="!modelGateways.length" class="module-empty-state prompt-empty-state">
+              <strong>暂无模型中转</strong>
+              <span>创建中转后点击同步，即可把该 API Key 下的模型加入选择列表。</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="prompt-admin-card model-gateway-card">
+          <div class="prompt-admin-card-head">
+            <div>
+              <h3>模型目录</h3>
+              <p>系统会自动猜测模型能力；无法识别的模型请手动标注后再用于生成。</p>
+            </div>
+          </div>
+          <div class="model-catalog-list">
+            <article v-for="model in modelManagerConfigs" :key="model.id" class="model-catalog-item">
+              <div class="model-catalog-main">
+                <strong>{{ model.name }}</strong>
+                <span>{{ model.provider }} · {{ model.model_id || '未设置模型 ID' }}</span>
+                <p>{{ model.recommendation_label || '暂无推荐标签' }}{{ model.recommendation_reason ? `｜${model.recommendation_reason}` : '' }}</p>
+                <small v-if="model.risk_note">风险提示：{{ model.risk_note }}</small>
+              </div>
+              <div class="model-catalog-controls">
+                <select :value="model.model_type" class="input" @change="handleUpdateModelCapabilityFromEvent(model, $event)">
+                  <option value="text">文字</option>
+                  <option value="image">图片</option>
+                  <option value="video">视频</option>
+                  <option value="multimodal">多模态</option>
+                  <option value="unknown">待标注</option>
+                </select>
+                <button class="btn btn-ghost btn-sm" @click="handleSetPersonalDefault(model.model_type, model.id || 0)">设个人默认</button>
+                <button v-if="isAdminUser" class="btn btn-ghost btn-sm" @click="handleSetGlobalDefault(model.model_type, model.id || 0)">设全局默认</button>
+              </div>
+            </article>
+            <div v-if="!modelManagerConfigs.length" class="module-empty-state prompt-empty-state">
+              <strong>暂无可用模型</strong>
+              <span>请先添加中转账号并同步模型，或由管理员配置全局模型。</span>
+            </div>
+          </div>
+        </section>
       </section>
 
       <section v-else-if="workspaceMode === 'prompts' && isAdminUser" class="panel panel-full glass-card prompt-manager-panel">
@@ -1860,7 +2578,7 @@ function copyDramaMarkdown() {
               <article v-for="template in promptManagerTemplates" :key="template.id" class="prompt-template-item">
                 <div>
                   <strong>{{ template.name }}</strong>
-                  <span>{{ template.key }} · {{ template.scenario || '未设置场景' }} · v{{ template.version }}</span>
+                  <span>{{ template.key }} · {{ template.platform || '全平台' }} / {{ template.scene || template.scenario || '未设置场景' }} / {{ template.step || '未设置步骤' }} · v{{ template.version }}</span>
                   <p>{{ template.description || '暂无说明' }}</p>
                   <small>结构：{{ template.output_structure || '未设置' }}</small>
                 </div>
@@ -1899,8 +2617,24 @@ function copyDramaMarkdown() {
                   <input v-model="promptTemplateForm.scenario" class="input" placeholder="干货分享" />
                 </div>
                 <div class="form-row">
+                  <label class="form-label">平台</label>
+                  <input v-model="promptTemplateForm.platform" class="input" placeholder="wechat / xiaohongshu / douyin" />
+                </div>
+                <div class="form-row">
+                  <label class="form-label">业务场景</label>
+                  <input v-model="promptTemplateForm.scene" class="input" placeholder="二创 / 口播 / 封面 / 分镜" />
+                </div>
+                <div class="form-row">
+                  <label class="form-label">生成步骤</label>
+                  <input v-model="promptTemplateForm.step" class="input" placeholder="正文生成 / 图片提示词 / 视频提示词" />
+                </div>
+                <div class="form-row">
                   <label class="form-label">版本</label>
                   <input v-model="promptTemplateForm.version" class="input" placeholder="1.0.0" />
+                </div>
+                <div class="form-row">
+                  <label class="form-label">版本说明</label>
+                  <input v-model="promptTemplateForm.change_note" class="input" placeholder="这次调整了什么" />
                 </div>
                 <div class="form-row">
                   <label class="form-label">排序</label>
@@ -1937,6 +2671,13 @@ function copyDramaMarkdown() {
                 </button>
                 <button class="btn btn-ghost btn-sm" @click="resetPromptTemplateForm">清空</button>
               </div>
+              <div v-if="promptTemplateVersions.length" class="prompt-version-list">
+                <strong>版本历史</strong>
+                <article v-for="version in promptTemplateVersions" :key="version.versionId" class="compact-item">
+                  <span>v{{ version.version }} · {{ version.platform || '全平台' }} / {{ version.scene || '场景未填' }} / {{ version.step || '步骤未填' }}</span>
+                  <small>{{ version.changeNote || '无变更说明' }} · {{ version.createdAt?.slice(0, 16) }}</small>
+                </article>
+              </div>
             </div>
           </section>
 
@@ -1967,7 +2708,7 @@ function copyDramaMarkdown() {
               </div>
             </div>
 
-            <div class="prompt-form prompt-template-form">
+            <div class="prompt-form model-config-form">
               <div class="strategy-grid">
                 <div class="form-row">
                   <label class="form-label">模型名称</label>
@@ -2021,8 +2762,17 @@ function copyDramaMarkdown() {
         </div>
       </section>
 
-      <!-- ─── Left Panel (IP 全案模式) ─── -->
-      <section v-else-if="workspaceMode === 'ip'" class="panel panel-full glass-card panel-stack">
+      <!-- ─── Production Center ─── -->
+      <section v-else-if="workspaceMode === 'ip'" class="panel panel-full">
+        <ProductionCenter
+          :initial-title="coverTitle || topicInput || '未命名内容选题'"
+          :initial-content="scriptContent || extractedContent"
+          :current-user="props.currentUser"
+        />
+      </section>
+
+      <!-- ─── Legacy IP Workspace (保留代码，当前不作为主入口渲染) ─── -->
+      <section v-else-if="false" class="panel panel-full glass-card panel-stack">
         <div class="workspace-overview">
           <div class="overview-copy">
             <span class="section-eyebrow">IP Production Flow</span>
@@ -2111,6 +2861,21 @@ function copyDramaMarkdown() {
           </div>
         </div>
 
+        <div class="smart-suggestion-strip" data-testid="copilot-smart-suggestions" aria-label="智能生产建议">
+          <article class="info">
+            <strong>先输入素材</strong>
+            <span>主题、链接、文本、文件和媒体都能作为生产起点。</span>
+          </article>
+          <article class="warning">
+            <strong>再选模型和模板</strong>
+            <span>人设、栏目、提示词和目标平台会影响生成质量。</span>
+          </article>
+          <article class="success">
+            <strong>最后归档发布</strong>
+            <span>脚本、提词、分镜和发布包统一沉淀。</span>
+          </article>
+        </div>
+
         <div class="production-stepper" aria-label="内容生产进度">
           <div v-for="(step, index) in productionSteps" :key="step.label" class="production-step" :class="{ done: step.done }">
             <i>{{ index + 1 }}</i>
@@ -2122,7 +2887,7 @@ function copyDramaMarkdown() {
           <div class="ip-main-flow">
         <!-- Input Area -->
         <div class="input-area">
-          <div class="input-mode-toggle">
+          <div class="input-mode-toggle" aria-label="输入方式">
             <button
               v-for="mode in [
                 { key: 'topic', label: '主题', icon: '' },
@@ -2134,6 +2899,7 @@ function copyDramaMarkdown() {
               :key="mode.key"
               class="tab-item"
               :class="{ active: inputMode === mode.key }"
+              :aria-pressed="inputMode === mode.key"
               @click="inputMode = mode.key as any"
             >
               {{ mode.label }}
@@ -2176,6 +2942,7 @@ function copyDramaMarkdown() {
                 class="input"
                 rows="3"
                 placeholder="直接粘贴文章内容..."
+                @input="extractedContent = textInput; activeTab = 'extracted'"
               ></textarea>
               <button class="btn btn-primary btn-sm" style="margin-top: 8px;" :disabled="isLoading || !canParseInput" @click="handleParse">
                 {{ isLoading ? '处理中...' : '提取核心内容' }}
@@ -2262,6 +3029,11 @@ function copyDramaMarkdown() {
                   :disabled="isSavingShortVideoProject"
                   @click.stop="saveShortVideoWorkflowProject"
                 >{{ isSavingShortVideoProject ? '保存中...' : '保存到项目库' }}</button>
+                <button
+                  class="btn btn-ghost btn-sm"
+                  :disabled="isCreatingAipFromShortVideo"
+                  @click.stop="handleCreateVideoAipFromShortVideoProject"
+                >{{ isCreatingAipFromShortVideo ? '转入中...' : '转入视频 AIP' }}</button>
               </div>
             </div>
 
@@ -2490,7 +3262,7 @@ function copyDramaMarkdown() {
             <pre v-else class="content-text">{{ scriptContent }}</pre>
           </section>
 
-          <section class="content-module-section" @click="activeTab = 'video'">
+          <section class="content-module-panel" @click="activeTab = 'video'">
             <div class="content-module-head">
               <div>
                 <span class="module-index">05</span>
@@ -2527,7 +3299,28 @@ function copyDramaMarkdown() {
                 <button class="btn btn-primary btn-sm" :disabled="isVideoAipPlanning" @click.stop="handleGenerateVideoAipPlan">
                   {{ isVideoAipPlanning ? '规划中...' : '生成视频 AIP 链路' }}
                 </button>
+                <button class="btn btn-ghost btn-sm" :disabled="isSavingVideoAipProject" @click.stop="handleCreateVideoAipProject">
+                  {{ isSavingVideoAipProject ? '保存中...' : '保存为 AIP 项目' }}
+                </button>
                 <span class="flow-helper">右侧侧栏选择视频模板、比例、时长和模型；这里生成分步可复制提示词。</span>
+              </div>
+            </div>
+
+            <div v-if="videoAipProject" class="strategy-card video-aip-project-card">
+              <strong>已保存项目：#{{ videoAipProject.id }} {{ videoAipProject.title }}</strong>
+              <p>状态：{{ videoAipProject.status }} · 当前步骤：{{ videoAipProject.current_step_key || '未开始' }}</p>
+              <p v-if="videoAipProject.source && videoAipProject.source.type !== 'manual'">
+                来源：{{ videoAipProject.source.label }} #{{ videoAipProject.source.refId }} · {{ videoAipProject.source.title || '未命名来源' }}
+                <span v-if="videoAipProject.source.meta"> · {{ videoAipProject.source.meta }}</span>
+              </p>
+              <small>点击步骤里的「执行生成」，会提交真实图片/视频模型任务并把生成产物回写到后端。</small>
+              <div class="strategy-action-row video-aip-project-actions">
+                <button class="btn btn-primary btn-sm" :disabled="isRunningVideoAipNext || isRunningVideoAipAll" @click.stop="handleRunNextVideoAipStep">
+                  {{ isRunningVideoAipNext ? '执行中...' : '执行下一步' }}
+                </button>
+                <button class="btn btn-ghost btn-sm" :disabled="isRunningVideoAipAll || isRunningVideoAipNext" @click.stop="handleRunAllVideoAipSteps">
+                  {{ isRunningVideoAipAll ? '后台执行中...' : '执行全部' }}
+                </button>
               </div>
             </div>
 
@@ -2545,18 +3338,44 @@ function copyDramaMarkdown() {
                 </div>
               </section>
               <section class="strategy-section">
-                <h3>分步提示词</h3>
-                <div v-for="step in videoAipPlan.steps" :key="step.key" class="workflow-step-card">
+                <h3>分步真实任务</h3>
+                <div v-for="step in videoAipDisplaySteps" :key="step.displayKey" class="workflow-step-card">
                   <div class="workflow-step-head">
                     <div>
-                      <small>{{ step.key }}</small>
+                      <small>{{ step.displayKey }} · {{ step.displayStatus }}</small>
                       <strong>{{ step.title }}</strong>
                       <p>{{ step.goal }}</p>
+                      <p v-if="step.output?.artifact_type || step.task_type" class="video-aip-task-meta">
+                        {{ step.output?.artifact_type || step.artifact_type || 'artifact' }} · {{ step.output?.media_type || step.task_type || 'text' }}
+                        <span v-if="videoAipProgressText(step)"> · {{ videoAipProgressText(step) }}</span>
+                      </p>
                     </div>
                     <div class="workflow-step-actions">
                       <button class="btn btn-ghost btn-sm" @click.stop="copyToClipboard(step.prompt)">复制</button>
                       <button class="btn btn-ghost btn-sm" @click.stop="applyVideoAipStep(step)">应用</button>
+                      <template v-if="videoAipProject && step.isPersistedTask">
+                        <button
+                          class="btn btn-primary btn-sm"
+                          :disabled="runningVideoAipStepIds[step.id] || step.output?.task_type === 'text'"
+                          @click.stop="handleRunVideoAipStep(step)"
+                        >
+                          {{ runningVideoAipStepIds[step.id] ? '生成中...' : '执行生成' }}
+                        </button>
+                        <button class="btn btn-ghost btn-sm" @click.stop="markVideoAipStep(step, 'succeeded')">完成</button>
+                        <button class="btn btn-ghost btn-sm" @click.stop="markVideoAipStep(step, 'failed')">失败</button>
+                        <button class="btn btn-ghost btn-sm" :disabled="runningVideoAipStepIds[step.id] || step.output?.task_type === 'text'" @click.stop="handleRetryVideoAipStep(step)">重试</button>
+                      </template>
                     </div>
+                  </div>
+                  <div v-if="videoAipArtifactUrl(step)" class="video-aip-artifact">
+                    <video
+                      v-if="isVideoAipVideoStep(step)"
+                      :src="videoAipArtifactUrl(step)"
+                      controls
+                      playsinline
+                    ></video>
+                    <img v-else :src="videoAipArtifactUrl(step)" :alt="step.title" />
+                    <a :href="videoAipArtifactUrl(step)" target="_blank" rel="noreferrer">打开生成产物</a>
                   </div>
                   <pre class="workflow-prompt">{{ step.prompt }}</pre>
                 </div>
@@ -2669,10 +3488,10 @@ function copyDramaMarkdown() {
               <select v-model="selectedTextModelConfigId" class="input">
                 <option :value="0">系统默认模型</option>
                 <option v-for="model in textModelConfigs" :key="model.id" :value="model.id">
-                  {{ model.name }} · {{ model.provider }}
+                  {{ modelOptionLabel(model) }}
                 </option>
               </select>
-              <p class="sidecar-hint">{{ selectedPromptTemplate?.user_prompt_hint || '补充平台、受众、语气、时长、转化目标等要求。' }}</p>
+              <p class="sidecar-hint">{{ modelHint(selectedTextModelConfig, selectedPromptTemplate?.user_prompt_hint || '补充平台、受众、语气、时长、转化目标等要求。') }}</p>
             </section>
 
             <section class="sidecar-card">
@@ -2699,14 +3518,14 @@ function copyDramaMarkdown() {
                   <select v-model="selectedCoverModelConfigId" class="input">
                     <option :value="0">只生成提示词</option>
                     <option v-for="model in imageModelConfigs" :key="model.id" :value="model.id">
-                      {{ model.name }}
+                      {{ modelOptionLabel(model) }}
                     </option>
                   </select>
                 </div>
               </div>
               <label class="form-label">封面标题</label>
               <input v-model="coverTitle" class="input" placeholder="不填则从口播文案自动提炼" />
-              <p class="sidecar-hint">人物图、产品图和媒体素材先通过上方“媒体素材”上传；本期先生成可复制提示词，真实出图由图片模型链路承接。</p>
+              <p class="sidecar-hint">{{ modelHint(selectedCoverModelConfig, '人物图、产品图和媒体素材先通过上方“媒体素材”上传；本期先生成可复制提示词，真实出图由图片模型链路承接。') }}</p>
             </section>
 
             <section class="sidecar-card aip-card">
@@ -2745,15 +3564,19 @@ function copyDramaMarkdown() {
               <select v-model="selectedVideoModelConfigId" class="input">
                 <option :value="0">只生成提示词</option>
                 <option v-for="model in videoModelConfigs" :key="model.id" :value="model.id">
-                  {{ model.name }} · {{ model.provider }}
+                  {{ modelOptionLabel(model) }}
                 </option>
               </select>
+              <p class="sidecar-hint">{{ modelHint(selectedVideoModelConfig, '视频模型默认用于 AIP 最终视频步骤；如只生成提示词，可保持不选择。') }}</p>
               <ol class="aip-steps">
                 <li>产品链路：主体抠图/清理 → 三视图或四视图 → 九/三十六宫格分镜 → 最终视频提示词。</li>
                 <li>短剧链路：多人物四视图 → 剧情提示词 → 图片分镜图 → 剧本/分镜/参考图合成视频提示词。</li>
               </ol>
               <button class="btn btn-ghost sidecar-generate-btn" :disabled="isVideoAipPlanning" @click="handleGenerateVideoAipPlan">
                 {{ isVideoAipPlanning ? '规划链路中...' : '只生成视频 AIP 链路' }}
+              </button>
+              <button class="btn btn-ghost sidecar-generate-btn" :disabled="isSavingVideoAipProject" @click="handleCreateVideoAipProject">
+                {{ isSavingVideoAipProject ? '保存项目中...' : '创建可执行 AIP 项目' }}
               </button>
             </section>
 
@@ -2985,12 +3808,23 @@ function copyDramaMarkdown() {
         <TeleprompterPanel :initial-text="teleprompterInitialText || scriptContent" :current-user="props.currentUser" />
       </section>
 
+      <!-- ─── WeChat Publisher ─── -->
+      <section v-else-if="workspaceMode === 'wechat'" class="panel panel-full">
+        <WechatArticlePublisher
+          :initial-title="coverTitle || '未命名公众号文章'"
+          :initial-content="scriptContent || extractedContent"
+          source-type="copilot"
+          :source-id="String(selectedPersonaId || '')"
+          :current-user="props.currentUser"
+        />
+      </section>
+
       <!-- ─── Resizer ─── -->
       <!-- ─── Right Panel (Copilot Chat) ─── -->
       <section v-if="workspaceMode === 'reversal'" class="panel panel-right glass-card">
         <div class="chat-header">
           <div class="chat-title">
-            <span class="chat-icon">🤖</span>
+            <span class="chat-icon" aria-hidden="true">AI</span>
             <span>AI Copilot</span>
           </div>
           <span class="badge badge-success">在线</span>
@@ -3004,16 +3838,16 @@ function copyDramaMarkdown() {
             class="chat-bubble-wrapper animate-fade-in-up"
             :class="[`chat-${msg.role}`]"
           >
-            <div class="chat-avatar" v-if="msg.role !== 'user'">🤖</div>
+            <div class="chat-avatar" v-if="msg.role !== 'user'" aria-hidden="true">AI</div>
             <div class="chat-bubble" :class="[`bubble-${msg.role}`]">
               <p class="chat-content" style="white-space: pre-wrap;">{{ msg.content }}</p>
             </div>
-            <div class="chat-avatar" v-if="msg.role === 'user'">👤</div>
+            <div class="chat-avatar" v-if="msg.role === 'user'" aria-hidden="true">ME</div>
           </div>
 
           <!-- Streaming indicator -->
           <div v-if="isCopilotStreaming" class="chat-bubble-wrapper chat-assistant">
-            <div class="chat-avatar">🤖</div>
+            <div class="chat-avatar" aria-hidden="true">AI</div>
             <div class="chat-bubble bubble-assistant">
               <div class="typing-indicator">
                 <span></span><span></span><span></span>
@@ -3042,6 +3876,16 @@ function copyDramaMarkdown() {
         </div>
       </section>
     </main>
+    <ConfirmDialog
+      :open="confirmState.open"
+      :title="confirmState.title"
+      :message="confirmState.message"
+      :confirm-text="confirmState.confirmText"
+      :cancel-text="confirmState.cancelText"
+      :tone="confirmState.tone"
+      @confirm="resolveConfirmation(true)"
+      @cancel="resolveConfirmation(false)"
+    />
   </div>
 </template>
 
@@ -3050,7 +3894,7 @@ function copyDramaMarkdown() {
 .workspace {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100dvh;
   position: relative;
   z-index: 1;
   background:
@@ -3073,9 +3917,9 @@ function copyDramaMarkdown() {
   justify-content: space-between;
   flex-wrap: nowrap;
   gap: 16px;
-  min-height: 56px;
-  padding: 0 22px;
-  background: rgba(255, 255, 255, 0.76);
+  min-height: 68px;
+  padding: 10px 22px;
+  background: rgba(255, 255, 255, 0.82);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--glass-border);
@@ -3255,10 +4099,10 @@ function copyDramaMarkdown() {
 /* ═══ Main Layout ═══ */
 .workspace-main {
   flex: 1;
-  display: flex;
+  display: block;
   gap: 18px;
   padding: 18px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .workspace-home .workspace-main {
@@ -3278,7 +4122,7 @@ function copyDramaMarkdown() {
 .panel {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .panel-left {
@@ -3294,6 +4138,7 @@ function copyDramaMarkdown() {
 .panel-full {
   flex: 1;
   min-width: 0;
+  min-height: 0;
 }
 
 .panel-stack {
@@ -3314,7 +4159,7 @@ function copyDramaMarkdown() {
 }
 
 .content-section-index {
-  display: grid;
+  display: none;
   gap: 10px;
   padding: 14px 18px;
   border: 1px solid rgba(15, 23, 42, 0.08);
@@ -3362,6 +4207,167 @@ function copyDramaMarkdown() {
   font-weight: 950;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.platform-workbench-panel {
+  gap: 18px;
+  padding: 24px;
+  overflow-y: auto;
+  background:
+    radial-gradient(circle at 6% 8%, rgba(37, 99, 235, 0.1), transparent 28%),
+    radial-gradient(circle at 92% 12%, rgba(14, 165, 233, 0.1), transparent 30%),
+    rgba(255, 255, 255, 0.86);
+}
+
+.platform-workbench-head,
+.platform-retention-card,
+.platform-list-card header,
+.platform-channel-card,
+.platform-content-item,
+.platform-task-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.platform-workbench-head h1,
+.platform-retention-card h3,
+.platform-list-card h3,
+.platform-channel-card h3 {
+  margin: 0;
+  color: #0f172a;
+  font-weight: 950;
+  letter-spacing: -0.04em;
+}
+
+.platform-workbench-head h1 {
+  font-size: clamp(26px, 3vw, 38px);
+}
+
+.platform-workbench-head p,
+.platform-retention-card p,
+.platform-list-card p,
+.platform-channel-card p,
+.platform-content-item p {
+  margin: 7px 0 0;
+  color: #64748b;
+  line-height: 1.7;
+}
+
+.platform-metric-grid,
+.platform-channel-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.platform-metric-card,
+.platform-channel-card,
+.platform-list-card,
+.platform-retention-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.06);
+}
+
+.platform-metric-card {
+  display: grid;
+  gap: 7px;
+  padding: 18px;
+}
+
+.platform-metric-card span,
+.platform-channel-card span,
+.platform-content-item span,
+.platform-task-item span,
+.platform-task-item small,
+.retention-stats span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.platform-metric-card strong {
+  color: #0f172a;
+  font-size: 30px;
+  font-weight: 950;
+}
+
+.platform-metric-card small {
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.platform-channel-card,
+.platform-retention-card {
+  padding: 18px;
+}
+
+.platform-channel-card span {
+  color: #2563eb;
+}
+
+.platform-workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  gap: 16px;
+}
+
+.platform-list-card {
+  display: grid;
+  gap: 14px;
+  min-height: 320px;
+  padding: 18px;
+}
+
+.platform-content-list,
+.platform-task-list {
+  display: grid;
+  gap: 12px;
+}
+
+.platform-content-item,
+.platform-task-item {
+  padding: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.platform-content-item strong,
+.platform-task-item strong {
+  display: block;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.platform-item-actions,
+.retention-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.platform-task-item.failed {
+  border-color: rgba(239, 68, 68, 0.24);
+  background: rgba(254, 242, 242, 0.82);
+}
+
+.platform-task-item.succeeded {
+  border-color: rgba(34, 197, 94, 0.2);
+  background: rgba(240, 253, 244, 0.76);
+}
+
+.retention-stats span {
+  padding: 8px 10px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 999px;
+  background: rgba(239, 246, 255, 0.9);
+  color: #1d4ed8;
 }
 
 .workspace-overview {
@@ -3892,7 +4898,8 @@ function copyDramaMarkdown() {
   gap: 20px;
 }
 
-.content-module-section {
+.content-module-section,
+.content-module-panel {
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -3903,6 +4910,13 @@ function copyDramaMarkdown() {
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
   backdrop-filter: blur(18px) saturate(150%);
   -webkit-backdrop-filter: blur(18px) saturate(150%);
+  cursor: pointer;
+}
+
+.content-module-section:focus-visible,
+.content-module-panel:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.24);
+  outline-offset: 3px;
 }
 
 .content-module-head {
@@ -4103,15 +5117,20 @@ function copyDramaMarkdown() {
 .mode-switcher {
   display: flex;
   flex: 0 1 auto;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
-  max-width: min(560px, 46vw);
-  padding: 0;
+  max-width: min(820px, 58vw);
+  padding: 5px;
   overflow-x: auto;
-  background: transparent;
+  background: rgba(241, 245, 249, 0.88);
+  border: 1px solid rgba(15, 23, 42, 0.07);
   border-radius: 999px;
   margin-left: 8px;
   scrollbar-width: none;
+}
+
+.app-mode-tabs {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78), 0 12px 28px rgba(15, 23, 42, 0.06);
 }
 
 .mode-switcher::-webkit-scrollbar {
@@ -4119,7 +5138,7 @@ function copyDramaMarkdown() {
 }
 .mode-switcher .tab-item {
   flex: 0 0 auto;
-  padding: 7px 12px;
+  padding: 9px 14px;
   font-size: 12px;
   line-height: 1;
   color: #515154;
@@ -4143,9 +5162,9 @@ function copyDramaMarkdown() {
 }
 
 .mode-switcher .tab-item.active {
-  background: rgba(37, 99, 235, 0.1);
-  color: #1d4ed8;
-  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.1), var(--shadow-sm);
+  background: #0f172a;
+  color: #fff;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.16);
 }
 
 /* ═══ 提示词管理面板 ═══ */
@@ -4327,6 +5346,100 @@ function copyDramaMarkdown() {
   color: #1d4ed8;
   font-size: 12px;
   font-weight: 900;
+}
+
+.model-gateway-panel {
+  grid-template-columns: 1fr;
+}
+
+.model-gateway-grid,
+.default-model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.model-gateway-list,
+.model-catalog-list {
+  display: grid;
+  gap: 12px;
+}
+
+.model-gateway-item,
+.model-catalog-item,
+.default-model-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 20px;
+  background: #f8fafc;
+}
+
+.model-gateway-item,
+.model-catalog-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+}
+
+.model-gateway-item > div:first-child,
+.model-catalog-main {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.model-gateway-item strong,
+.model-catalog-main strong,
+.default-model-card strong {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.model-gateway-item span,
+.model-gateway-item small,
+.model-catalog-main span,
+.model-catalog-main small,
+.default-model-card span,
+.default-model-card small {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.6;
+}
+
+.model-gateway-item p,
+.model-catalog-main p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.default-model-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.default-model-actions,
+.model-catalog-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-catalog-controls {
+  justify-content: flex-end;
+  min-width: 260px;
+}
+
+.model-catalog-controls .input {
+  min-width: 120px;
 }
 
 .prompt-empty-state {
@@ -4848,6 +5961,26 @@ function copyDramaMarkdown() {
   .workspace-main {
     flex-direction: column;
   }
+
+  .platform-metric-grid,
+  .platform-channel-grid,
+  .platform-workbench-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-workbench-head,
+  .platform-retention-card,
+  .platform-content-item,
+  .platform-task-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .platform-item-actions,
+  .retention-stats {
+    justify-content: flex-start;
+  }
+
   .panel-left, .panel-right {
     flex: 1;
     margin: 0 0 8px 0;
@@ -5021,6 +6154,33 @@ function copyDramaMarkdown() {
   font-size: 13px;
   line-height: 1.7;
 }
+.video-aip-task-meta {
+  color: #4f46e5 !important;
+  font-weight: 800;
+}
+.video-aip-artifact {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(79, 70, 229, 0.06);
+  border: 1px solid rgba(79, 70, 229, 0.12);
+}
+.video-aip-artifact img,
+.video-aip-artifact video {
+  max-width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #111827;
+}
+.video-aip-artifact a {
+  color: #4f46e5;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
 .video-event-tag {
   font-size: 12px;
   color: #6b7280;
@@ -5041,7 +6201,7 @@ function copyDramaMarkdown() {
 }
 
 .workspace:not(.workspace-home) .mode-switcher {
-  max-width: min(520px, 34vw);
+  max-width: min(820px, 58vw);
   padding: 5px;
   background: rgba(241, 245, 249, 0.86);
 }
@@ -5075,7 +6235,7 @@ function copyDramaMarkdown() {
 }
 
 .workspace:not(.workspace-home) .workspace-main {
-  display: flex;
+  display: block;
   gap: 22px;
   max-width: 1680px;
   width: 100%;
@@ -5362,6 +6522,44 @@ function copyDramaMarkdown() {
 }
 
 @media (max-width: 760px) {
+  .workspace-home .workspace-header {
+    gap: 10px;
+    padding: 8px 12px;
+  }
+
+  .workspace-home .header-left {
+    min-width: 0;
+  }
+
+  .workspace-home .logo-text,
+  .workspace-home .badge-accent,
+  .workspace-home .global-search,
+  .workspace-home .user-chip {
+    display: none;
+  }
+
+  .workspace-home .mode-switcher {
+    flex: 1 1 auto;
+    max-width: calc(100vw - 142px);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .workspace-home .mode-switcher::-webkit-scrollbar {
+    display: none;
+  }
+
+  .workspace-home .mode-switcher .tab-item {
+    flex: 0 0 auto;
+    min-height: 32px;
+    padding: 7px 11px;
+    font-size: 12px;
+  }
+
+  .workspace-home .header-right {
+    gap: 8px;
+  }
+
   .workspace:not(.workspace-home) .workspace-header {
     flex-wrap: nowrap;
     gap: 10px;
@@ -5439,8 +6637,18 @@ function copyDramaMarkdown() {
   .smart-suggestion-strip,
   .strategy-grid,
   .prompt-manager-grid,
+  .model-gateway-grid,
+  .default-model-grid,
   .form-row-inline {
     grid-template-columns: 1fr;
+  }
+
+  .model-gateway-item,
+  .model-catalog-item,
+  .model-catalog-controls {
+    align-items: stretch;
+    flex-direction: column;
+    min-width: 0;
   }
 
   .global-search {

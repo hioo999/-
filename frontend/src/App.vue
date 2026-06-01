@@ -1,39 +1,28 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import CopilotWorkspace from './views/CopilotWorkspace.vue'
-import { setAuthToken } from './api'
+import { onMounted } from 'vue'
+import { RouterView, useRouter } from 'vue-router'
+import { storeToRefs } from 'pinia'
+import { useAuthStore } from './stores/auth'
 
-interface ActiveUser {
-  name: string
-  email: string
-  token?: string
-  isGuest?: boolean
-  is_admin?: boolean
-}
+const authStore = useAuthStore()
+const { currentUser } = storeToRefs(authStore)
+const router = useRouter()
 
-const STORAGE_KEY = 'ip-case-active-user'
-const currentUser = ref<ActiveUser | undefined>()
-
-onMounted(() => {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return
-    const user = JSON.parse(raw) as ActiveUser
-    currentUser.value = user
-    if (user.token) setAuthToken(user.token)
-  } catch {
-    currentUser.value = undefined
-  }
-})
+onMounted(authStore.hydrate)
 
 function handleLogout() {
-  currentUser.value = undefined
-  setAuthToken('')
-  window.localStorage.removeItem(STORAGE_KEY)
-  window.location.hash = ''
+  authStore.logout()
+  router.push('/')
 }
 </script>
 
 <template>
-  <CopilotWorkspace :current-user="currentUser" @logout="handleLogout" />
+  <RouterView v-slot="{ Component, route }">
+    <component
+      :is="Component"
+      :current-user="currentUser"
+      :initial-mode="route.meta.initialMode"
+      @logout="handleLogout"
+    />
+  </RouterView>
 </template>

@@ -18,3 +18,17 @@ See [architecture.md](./architecture.md) for architectural decisions.
 - [Backend](./backend.md)
 - [Frontend](./frontend.md)
 - [Video Engine](./video-engine.md)
+
+## Product Requirements
+
+- [PRD: IP System Platform Restructure](./prd-ip-system-platform-restructure.md)
+- [Meeting Notes: IP System Restructure Next Steps](./meeting-ip-system-restructure-next-steps.md)
+- [Status: IP System Restructure Phase 1](./status-ip-system-restructure-phase1.md)
+- [Plan: Frontend and Backend Architecture Refactor](./plan-frontend-backend-architecture-refactor.md)
+- [Plan: Production Center Platform Restructure](./plan-production-center-restructure.md)
+- [Schedule: Production Center Restructure Tasks](./schedule-production-center-restructure.md)
+- [PRD: Unified Generation Config Sidebar and Video AIP Flow](./prd-generation-config-sidebar-and-video-aip.md)
+- [PRD: Video AIP Media Task Execution](./prd-video-aip-media-task-execution.md)
+- [Development Plan: Video AIP Task Pipeline](./plan-video-aip-task-pipeline.md)
+- [PRD: Model Gateway, Model Discovery, and Default Model Strategy](./prd-model-gateway-and-default-models.md)
+- [PRD: WeChat Official Account Formatting and Draft Publishing](./prd-wechat-official-account-formatting-and-draft.md)

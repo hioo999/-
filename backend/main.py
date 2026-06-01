@@ -22,6 +22,10 @@ from api.video_routes import router as video_router
 from api.short_video_routes import router as short_video_router
 from api.sprint1_routes import router as sprint1_router
 from api.teleprompter_routes import router as teleprompter_router
+from api.wechat_routes import router as wechat_router
+from api.model_routes import router as model_router
+from api.platform_routes import router as platform_router
+from api.dashboard_routes import router as dashboard_router
 from video_engine import runtime as video_runtime
 
 # 日志配置
@@ -82,6 +86,10 @@ app.include_router(video_router)
 app.include_router(short_video_router)
 app.include_router(sprint1_router)
 app.include_router(teleprompter_router)
+app.include_router(wechat_router)
+app.include_router(model_router)
+app.include_router(platform_router)
+app.include_router(dashboard_router)
 
 
 @app.get("/health", tags=["健康检查"])

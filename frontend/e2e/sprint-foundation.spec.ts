@@ -1,6 +1,21 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page, type TestInfo } from '@playwright/test'
 
 const apiBaseURL = process.env.VITE_API_BASE_URL || 'http://127.0.0.1:8123'
+
+async function signIn(page: Page, request: APIRequestContext, testInfo: TestInfo, options: { isAdmin?: boolean } = {}) {
+  const email = `e2e-${testInfo.project.name}-${testInfo.workerIndex}-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`
+  const password = process.env.E2E_TEST_PASSWORD || 'test-password-change-me'
+  const registerResponse = await request.post(`${apiBaseURL}/api/auth/register`, {
+    data: { name: 'E2E Tester', email, password },
+  })
+  expect(registerResponse.ok()).toBeTruthy()
+  const session = await registerResponse.json()
+  const activeUser = { name: 'E2E Tester', email, token: session.data.token, is_admin: options.isAdmin === true }
+  await page.addInitScript((user) => {
+    window.localStorage.setItem('ip-case-active-user', JSON.stringify(user))
+  }, activeUser)
+  return activeUser
+}
 
 async function enterAsGuest(page: Page) {
   await page.goto('/')
@@ -21,30 +36,26 @@ test.describe('首页与内容生产冒烟', () => {
     await expect(page.getByRole('button', { name: '在线提词器' })).toBeVisible()
   })
 
-  test('hash 直达 IP 内容工作台时隐藏根壳层并展示一级模块', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem('ip-case-active-user', JSON.stringify({ name: 'E2E Tester', email: 'e2e@example.com', token: 'e2e-token' }))
-    })
+  test('hash 直达内容中心时展示新版生产中心模块', async ({ page, request }, testInfo) => {
+    await signIn(page, request, testInfo)
     await page.goto('/#/ip')
 
-    await expect(page.getByRole('heading', { name: 'IP 全案内容生产工作台' })).toBeVisible()
-    await expect(page.locator('.shell-topbar')).toHaveCount(0)
-    await expect(page.locator('.top-nav')).toHaveCount(0)
-    await expect(page.locator('.workspace-metrics')).toHaveCount(0)
-    await expect(page.getByText('内容生产', { exact: true })).toHaveCount(0)
-    await expect(page.getByText('账户', { exact: true })).toHaveCount(0)
-    await expect(page.locator('.content-module-section')).toHaveCount(5)
-    await expect(page.getByRole('heading', { name: '内容提取' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: '短视频工作流' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: '选题策略' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: '口播文案' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: '发布全案' })).toBeVisible()
+    await expect(page).toHaveURL(/\/workspace\/content$/)
+    await expect(page.getByRole('heading', { name: '生产中心' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'IP 项目' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '内容选题', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '素材输入' })).toBeVisible()
+    const productionNav = page.getByRole('navigation', { name: '生产中心模块' })
+    await expect(productionNav.getByRole('button')).toHaveCount(5)
+    await expect(productionNav.getByRole('button', { name: /选题总览/ })).toBeVisible()
+    await expect(productionNav.getByRole('button', { name: /公众号闭环/ })).toBeVisible()
+    await expect(productionNav.getByRole('button', { name: /小红书\/口播/ })).toBeVisible()
+    await expect(productionNav.getByRole('button', { name: /提词器/ })).toBeVisible()
+    await expect(productionNav.getByRole('button', { name: /高级视频/ })).toBeVisible()
   })
 
-  test('提示词管理页可创建分类和模板', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem('ip-case-active-user', JSON.stringify({ name: 'E2E Tester', email: 'e2e@example.com', token: 'e2e-token' }))
-    })
+  test('提示词管理页可创建分类和模板', async ({ page, request }, testInfo) => {
+    await signIn(page, request, testInfo, { isAdmin: true })
 
     const categories = [
       { id: 1, key: 'knowledge_talk', name: '知识口播', description: '干货分享', is_active: true, sort_order: 10 },
@@ -89,7 +100,7 @@ test.describe('首页与内容生产冒烟', () => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, data: template }) })
     })
 
-    await page.goto('/#/prompts')
+    await page.goto('/admin/prompts')
     await expect(page.getByRole('heading', { name: '提示词分类与模板管理' })).toBeVisible()
 
     await page.getByPlaceholder('knowledge_talk').fill('qa_e2e')
@@ -113,186 +124,78 @@ test.describe('首页与内容生产冒烟', () => {
     await expect(page.getByText('结构：开头 -> 内容 -> CTA')).toBeVisible()
   })
 
-  test('内容生产页完成文本提取并生成全案主链路', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem('ip-case-active-user', JSON.stringify({ name: 'E2E Tester', email: 'e2e@example.com', token: 'e2e-token' }))
-    })
-    await page.route('**/api/copilot/generate', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          code: 0,
-          data: {
-            history_id: 1,
-            script_content: '测试口播文案：AI 工具能把选题、脚本和发布计划串成一条稳定生产线。',
-            video_prompts: '测试分镜提示词：竖屏 9:16，展示内容创作者使用 AI 工作台规划选题。',
-            cover_prompt: '测试封面提示词：标题突出 AI 内容生产效率，科技感蓝白配色。',
-          },
-        }),
-      })
-    })
+  test('生产中心可创建项目、选题并保存素材', async ({ page, request }, testInfo) => {
+    await signIn(page, request, testInfo)
+    await page.goto('/workspace/content')
 
-    const sourceText = 'AI 工具如何提升短视频选题效率。目标用户是内容创作者和运营团队，需要稳定产出选题、脚本和发布计划。'
-    const longSourceText = Array.from({ length: 140 }, () => sourceText).join('\n')
+    await page.getByRole('textbox', { name: '项目名称' }).fill(`E2E 内容中心项目 ${Date.now()}`)
+    await page.getByRole('textbox', { name: '账号定位' }).fill('面向内容创作者的个人 IP 测试项目')
+    await page.getByRole('button', { name: '创建项目' }).click()
+    await expect(page.getByText('IP 项目已创建。')).toBeVisible()
 
-    await page.goto('/#/ip')
-    await page.getByRole('button', { name: '文本' }).click()
-    await page.getByPlaceholder('直接粘贴文章内容...').fill(longSourceText)
-    await page.getByRole('button', { name: '提取核心内容' }).click()
+    await page.getByRole('textbox', { name: '选题名称' }).fill('AI 内容中心全链路测试选题')
+    await page.getByRole('button', { name: '创建选题' }).click()
+    await expect(page.getByText('内容选题已创建。')).toBeVisible()
 
-    await expect(page.locator('pre.content-text').first()).toContainText('AI 工具如何提升短视频选题效率')
-    const generateButton = page.locator('.overview-actions').getByRole('button', { name: '生成全案' })
-    await expect(generateButton).toBeEnabled()
-
-    await generateButton.click()
-    await expect(page.getByText('测试口播文案：AI 工具能把选题、脚本和发布计划串成一条稳定生产线。')).toBeVisible()
-    await expect(page.getByText('发布辅助素材')).toBeVisible()
-    await expect(page.getByText('内容输出状态：待输出')).toBeVisible()
-    await expect(page.getByText('已生成')).toBeVisible()
+    await page.getByRole('textbox', { name: '素材标题' }).fill('E2E 主题素材')
+    await page.getByRole('textbox', { name: '主题' }).fill('如何用 AI 内容中心提升个人 IP 内容生产效率')
+    await page.getByRole('button', { name: '保存素材' }).click()
+    await expect(page.getByText('素材已保存到当前选题资产库。')).toBeVisible()
+    await expect(page.locator('.production-status-card').filter({ hasText: '资产沉淀' })).toContainText('1')
+    await expect(page.locator('.asset-item').filter({ hasText: 'E2E 主题素材' })).toBeVisible()
   })
 
-  test('内容生产页完成发布全案与发布质检闭环', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem('ip-case-active-user', JSON.stringify({ name: 'E2E Tester', email: 'e2e@example.com', token: 'e2e-token' }))
-    })
-    await page.route('**/api/copilot/generate', async (route) => {
+  test('多平台内容工作台可生成、编辑并进入资产沉淀视图', async ({ page, request }, testInfo) => {
+    await signIn(page, request, testInfo)
+    await page.route('**/api/xiaohongshu/notes', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           code: 0,
+          message: '平台内容已生成',
           data: {
-            history_id: 1,
-            script_content: '测试口播文案：AI 内容工作台帮助团队稳定生成选题、脚本和发布方案。',
-            video_prompts: '测试分镜提示词：内容创作者在工作台中查看选题与发布计划。',
-            cover_prompt: '测试封面提示词：AI 内容生产工作台，高效、稳定、可复用。',
-          },
-        }),
-      })
-    })
-    await page.route('**/api/copilot/strategy/publish-package', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          code: 0,
-          data: {
-            short_titles: ['AI 内容生产效率翻倍', '选题脚本一条线搞定'],
-            caption: '用 AI 工作台把选题、脚本、发布文案串起来，减少重复沟通。',
-            comment_pin: '想要内容生产流程模板，评论区打“模板”。',
-            private_message_reply: '已收到，发你一份内容生产流程模板。',
-          },
-        }),
-      })
-    })
-    await page.route('**/api/copilot/strategy/quality-check', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          code: 0,
-          data: {
-            total_score: 92,
-            optimized_opening: '别再手动拼选题、脚本和发布文案了。',
-            issues: ['CTA 可再明确一点'],
-            suggestions: ['首屏突出节省时间和复用流程'],
-          },
-        }),
-      })
-    })
-
-    const sourceText = 'AI 内容工作台如何提升团队内容生产效率。目标用户是内容负责人和运营团队，需要稳定生成选题、脚本和发布方案。'
-    const longSourceText = Array.from({ length: 140 }, () => sourceText).join('\n')
-
-    await page.goto('/#/ip')
-    await page.getByRole('button', { name: '文本' }).click()
-    await page.getByPlaceholder('直接粘贴文章内容...').fill(longSourceText)
-    await page.getByRole('button', { name: '提取核心内容' }).click()
-    await expect(page.locator('pre.content-text').first()).toContainText('AI 内容工作台如何提升团队内容生产效率')
-    await page.locator('.overview-actions').getByRole('button', { name: '生成全案' }).click()
-    await expect(page.getByText('测试口播文案：AI 内容工作台帮助团队稳定生成选题、脚本和发布方案。')).toBeVisible()
-
-    await page.getByRole('button', { name: '发布全案', exact: true }).click()
-    await expect(page.getByText('AI 内容生产效率翻倍 / 选题脚本一条线搞定')).toBeVisible()
-    await expect(page.getByText('用 AI 工作台把选题、脚本、发布文案串起来，减少重复沟通。')).toBeVisible()
-    await expect(page.getByText('想要内容生产流程模板，评论区打“模板”。')).toBeVisible()
-    await expect(page.getByText('已收到，发你一份内容生产流程模板。')).toBeVisible()
-    await expect(page.getByText('内容输出状态：已输出')).toBeVisible()
-
-    await page.getByRole('button', { name: '发布质检', exact: true }).click()
-    await expect(page.getByText('总分：92')).toBeVisible()
-    await expect(page.getByText('建议开头：别再手动拼选题、脚本和发布文案了。')).toBeVisible()
-    await expect(page.getByText('问题：CTA 可再明确一点')).toBeVisible()
-    await expect(page.getByText('建议：首屏突出节省时间和复用流程')).toBeVisible()
-  })
-
-  test('短视频工作流可识别、展示步骤并应用到内容模块', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem('ip-case-active-user', JSON.stringify({ name: 'E2E Tester', email: 'e2e@example.com', token: 'e2e-token' }))
-    })
-    await page.route('**/api/short-video/workflow', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          code: 0,
-          data: {
-            intent: {
-              intent: 'product_tvc',
-              label: '产品TVC',
-              confidence: 0.93,
-              matched_keywords: ['饮料', '15秒', '小红书'],
-              source: 'mock',
+            content: {
+              contentId: 9001,
+              projectId: 1,
+              topicId: 1,
+              materialId: 1,
+              platform: 'xiaohongshu',
+              contentType: 'xiaohongshu_note',
+              title: '测试小红书笔记',
+              subtitle: '',
+              author: '',
+              summary: '测试摘要',
+              coverPrompt: '蓝白科技感封面',
+              coverAssetId: 0,
+              imageSlots: [{ position: 'image_1', purpose: '首图', prompt: '内容中心首图' }],
+              tags: ['qa', 'content-center'],
+              complianceRisks: [],
+              status: 'generated_with_fallback',
+              version: 1,
+              content: { export_text: '测试小红书正文：内容中心把素材、平台内容、任务和资产串成一条生产线。' },
+              markdownSnapshot: '测试小红书正文：内容中心把素材、平台内容、任务和资产串成一条生产线。',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
             },
-            workflow: {
-              key: 'product_tvc',
-              label: '产品TVC广告短视频',
-              recommended_command: '/product-tvc-video',
-              template_doc: 'product-tvc-video/SKILL.md',
-            },
-            variables: {
-              主体名称: '无糖杏仁甘露',
-              视频主题: '15秒清爽饮品种草',
-            },
-            steps: [
-              {
-                key: 'script',
-                label: '口播脚本',
-                description: '生成用于提词器跟读的口播脚本',
-                prompt: '短视频工作流应用脚本：无糖杏仁甘露，0糖也能喝出高级清爽感。',
-              },
-              {
-                key: 'storyboard',
-                label: '九宫格分镜',
-                description: '生成九宫格广告分镜提示词',
-                prompt: '短视频工作流分镜：冰块、杏仁露、东方包装、清爽转场。',
-              },
-            ],
-            questions: ['是否需要强调无糖卖点？'],
-            next_actions: ['应用口播脚本到口播文案模块', '导出工作流归档'],
+            task: { taskId: 1, taskType: 'xiaohongshu_note_generate', status: 'succeeded', progress: 100 },
           },
         }),
       })
     })
 
-    await page.goto('/#/ip')
-    await page.getByPlaceholder('例：我上传的是一款无糖杏仁甘露饮料，做15秒小红书短视频，风格高级清爽').fill(
-      '无糖杏仁甘露饮料，做 15 秒小红书产品 TVC，风格高级清爽。'
-    )
-    await page.getByPlaceholder('例：无糖杏仁甘露 / 布偶猫 / 张老师IP').fill('无糖杏仁甘露')
-    await page.getByRole('button', { name: '自动识别并生成工作流' }).click()
+    await page.goto('/workspace/content')
+    await page.getByRole('navigation', { name: '生产中心模块' }).getByRole('button', { name: /小红书\/口播/ }).click()
+    await expect(page.getByRole('heading', { name: '多平台内容工作台' })).toBeVisible()
+    const platformStudio = page.locator('.platform-studio')
+    await platformStudio.getByRole('textbox', { name: '选题标题' }).fill('测试小红书选题')
+    await platformStudio.getByRole('textbox', { name: '主题' }).fill('内容中心如何提升生产效率')
+    await platformStudio.getByRole('button', { name: '生成小红书创作' }).click()
 
-    await expect(page.locator('.intent-pill').getByText('产品TVC', { exact: true })).toBeVisible()
-    await expect(page.getByText('置信度 93%')).toBeVisible()
-    await expect(page.getByText('产品TVC广告短视频')).toBeVisible()
-    await expect(page.getByText('是否需要强调无糖卖点？')).toBeVisible()
-    await expect(page.locator('.workflow-step-card strong').getByText('口播脚本', { exact: true })).toBeVisible()
-    await expect(page.locator('.workflow-step-card strong').getByText('九宫格分镜', { exact: true })).toBeVisible()
-
-    await page.locator('.workflow-step-card').filter({ hasText: '口播脚本' }).getByRole('button', { name: '应用' }).click()
-    await expect(page.locator('pre.content-text').filter({ hasText: '短视频工作流应用脚本：无糖杏仁甘露，0糖也能喝出高级清爽感。' })).toBeVisible()
-    await expect(page.locator('.overview-metrics article').filter({ hasText: '脚本文案' })).toContainText('已生成')
+    await expect(page.getByText('平台内容已生成')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '测试小红书笔记' })).toBeVisible()
+    await expect(page.getByRole('textbox', { name: '正文/复制内容' })).toHaveValue(/内容中心把素材、平台内容、任务和资产串成一条生产线/)
+    await expect(page.getByText('xiaohongshu · xiaohongshu_note · generated_with_fallback')).toBeVisible()
   })
 })
 

@@ -247,6 +247,9 @@ class SprintFoundationApiTest(unittest.TestCase):
             json={
                 "key": template_key,
                 "category_key": category_key,
+                "platform": "wechat",
+                "scene": "二创",
+                "step": "正文生成",
                 "name": "QA口播模板",
                 "description": "测试后台提示词模板",
                 "scenario": "接口回归",
@@ -254,6 +257,7 @@ class SprintFoundationApiTest(unittest.TestCase):
                 "writing_rules": ["规则一", "规则二"],
                 "prompt_body": "严格按 QA 模板生成。",
                 "version": "1.0.0",
+                "change_note": "创建 QA 模板",
                 "is_default": True,
                 "sort_order": 999,
             },
@@ -261,6 +265,7 @@ class SprintFoundationApiTest(unittest.TestCase):
         )
         self.assertEqual(created_template.status_code, 200, created_template.text)
         template_id = created_template.json()["data"]["id"]
+        self.assertGreater(created_template.json()["data"]["versionId"], 0)
 
         anonymous_detail = self.client.get(f"/api/copilot/prompt-templates/{template_id}")
         self.assertEqual(anonymous_detail.status_code, 401, anonymous_detail.text)
@@ -272,12 +277,17 @@ class SprintFoundationApiTest(unittest.TestCase):
         self.assertEqual(detail.status_code, 200, detail.text)
         self.assertEqual(detail.json()["data"]["prompt_body"], "严格按 QA 模板生成。")
         self.assertEqual(detail.json()["data"]["writing_rules"], ["规则一", "规则二"])
+        self.assertEqual(detail.json()["data"]["platform"], "wechat")
+        self.assertEqual(detail.json()["data"]["step"], "正文生成")
 
         updated_template = self.client.put(
             f"/api/copilot/prompt-templates/{template_id}",
             json={
                 "key": template_key,
                 "category_key": category_key,
+                "platform": "wechat",
+                "scene": "二创",
+                "step": "正文生成",
                 "name": "QA口播模板更新版",
                 "description": "测试后台提示词模板更新",
                 "scenario": "接口回归",
@@ -285,6 +295,7 @@ class SprintFoundationApiTest(unittest.TestCase):
                 "writing_rules": ["更新规则"],
                 "prompt_body": "严格按更新后的 QA 模板生成。",
                 "version": "1.0.1",
+                "change_note": "更新 QA 模板",
                 "is_default": True,
                 "is_active": True,
                 "sort_order": 998,
@@ -294,6 +305,12 @@ class SprintFoundationApiTest(unittest.TestCase):
         self.assertEqual(updated_template.status_code, 200, updated_template.text)
         self.assertEqual(updated_template.json()["data"]["name"], "QA口播模板更新版")
         self.assertEqual(updated_template.json()["data"]["writing_rules"], ["更新规则"])
+        self.assertGreater(updated_template.json()["data"]["versionId"], created_template.json()["data"]["versionId"])
+
+        versions = self.client.get(f"/api/copilot/prompt-templates/{template_id}/versions", headers=self.admin_headers)
+        self.assertEqual(versions.status_code, 200, versions.text)
+        self.assertGreaterEqual(versions.json()["data"]["total"], 2)
+        self.assertIn("正文生成", [item["step"] for item in versions.json()["data"]["items"]])
 
         deleted_template = self.client.delete(f"/api/copilot/prompt-templates/{template_id}", headers=self.admin_headers)
         self.assertEqual(deleted_template.status_code, 200, deleted_template.text)

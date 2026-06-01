@@ -30,6 +30,9 @@ def init_db():
     _ensure_user_account_columns()
     _ensure_generation_history_columns()
     _ensure_prompt_template_columns()
+    _ensure_ai_model_config_columns()
+    _ensure_platform_restructure_columns()
+    _ensure_wechat_columns()
     _ensure_admin_account()
 
 
@@ -120,6 +123,9 @@ def _ensure_prompt_template_columns():
             existing = {column["name"] for column in inspector.get_columns("prompt_templates")}
             columns = {
                 "template_type": "VARCHAR(50) DEFAULT 'text_script'",
+                "platform": "VARCHAR(80) DEFAULT ''",
+                "scene": "VARCHAR(120) DEFAULT ''",
+                "step": "VARCHAR(120) DEFAULT ''",
                 "user_prompt_hint": "TEXT DEFAULT ''",
                 "default_params_json": "TEXT DEFAULT '{}'",
                 "default_model_config_id": "INTEGER DEFAULT 0",
@@ -127,6 +133,109 @@ def _ensure_prompt_template_columns():
             for name, ddl in columns.items():
                 if name not in existing:
                     conn.execute(text(f"ALTER TABLE prompt_templates ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_ai_model_config_columns():
+    """补齐模型中转和推荐字段，兼容旧 SQLite 开发库。"""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    inspector = inspect(engine)
+    if "ai_model_configs" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("ai_model_configs")}
+    columns = {
+        "user_id": "INTEGER DEFAULT 0",
+        "gateway_id": "INTEGER DEFAULT 0",
+        "recommendation_label": "VARCHAR(120) DEFAULT ''",
+        "recommendation_reason": "TEXT DEFAULT ''",
+        "risk_note": "TEXT DEFAULT ''",
+        "last_seen_at": "DATETIME",
+    }
+    with engine.begin() as conn:
+        for name, ddl in columns.items():
+            if name not in existing:
+                conn.execute(text(f"ALTER TABLE ai_model_configs ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_wechat_columns():
+    """补齐公众号发布表的新增稳定性字段。"""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        if "wechat_draft_records" in table_names:
+            existing = {column["name"] for column in inspector.get_columns("wechat_draft_records")}
+            columns = {
+                "idempotency_key": "VARCHAR(120) DEFAULT ''",
+                "project_id": "INTEGER DEFAULT 0",
+                "topic_id": "INTEGER DEFAULT 0",
+                "platform_content_id": "INTEGER DEFAULT 0",
+                "task_id": "INTEGER DEFAULT 0",
+                "theme_id": "VARCHAR(120) DEFAULT ''",
+                "cover_asset_id": "INTEGER DEFAULT 0",
+                "contains_ai_images": "BOOLEAN DEFAULT 0",
+                "preflight_result_json": "TEXT DEFAULT '{}'",
+            }
+            for name, ddl in columns.items():
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE wechat_draft_records ADD COLUMN {name} {ddl}"))
+        if "wechat_accounts" in table_names:
+            existing = {column["name"] for column in inspector.get_columns("wechat_accounts")}
+            columns = {
+                "scope": "VARCHAR(30) DEFAULT 'system'",
+                "authorized_user_ids_json": "TEXT DEFAULT '[]'",
+            }
+            for name, ddl in columns.items():
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE wechat_accounts ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_platform_restructure_columns():
+    """补齐平台化重构核心表字段。"""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+    patch_map = {
+        "ip_projects": {
+            "is_active": "BOOLEAN DEFAULT 1",
+        },
+        "content_topics": {
+            "is_active": "BOOLEAN DEFAULT 1",
+        },
+        "source_materials": {
+            "is_active": "BOOLEAN DEFAULT 1",
+        },
+        "platform_contents": {
+            "is_active": "BOOLEAN DEFAULT 1",
+        },
+        "assets": {
+            "status": "VARCHAR(40) DEFAULT 'active'",
+        },
+        "generation_tasks": {
+            "raw_response_excerpt": "TEXT DEFAULT ''",
+            "retry_count": "INTEGER DEFAULT 0",
+            "parent_task_id": "INTEGER DEFAULT 0",
+        },
+        "video_aip_projects": {
+            "user_id": "INTEGER DEFAULT 0",
+            "source_type": "VARCHAR(80) DEFAULT 'manual'",
+            "source_ref_id": "INTEGER DEFAULT 0",
+            "source_assets_json": "TEXT DEFAULT '[]'",
+        },
+        "short_video_projects": {
+            "user_id": "INTEGER DEFAULT 0",
+        },
+    }
+    with engine.begin() as conn:
+        for table_name, columns in patch_map.items():
+            if table_name not in table_names:
+                continue
+            existing = {column["name"] for column in inspector.get_columns(table_name)}
+            for name, ddl in columns.items():
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {name} {ddl}"))
 
 
 def get_db() -> Session:
