@@ -1,0 +1,46 @@
+# macOS
+.DS_Store
+
+# Python caches and test output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node and frontend build output
+node_modules/
+dist/
+build/
+.next/
+.vite/
+
+# Local virtual environments
+.venv/
+venv/
+harness-engineering/.venv-agent-api/
+
+# Local env and secrets
+.env
+.env.*
+!.env.example
+!*.env.example
+
+# Logs and runtime data
+*.log
+logs/
+*.db
+*.sqlite
+*.sqlite3
+
+# Delivery/test artifacts
+*.tar.gz
+*.zip
+*.bundle
+*.sha256
+harness-engineering/test-deliverables/
+
+# Local tool state
+.playwright-mcp/
