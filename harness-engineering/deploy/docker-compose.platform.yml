@@ -1,0 +1,35 @@
+services:
+  platform-api:
+    image: python:3.13-slim
+    working_dir: /app
+    command: python3 services/platform-api/server.py
+    env_file:
+      - env.platform.example
+    ports:
+      - "8100:8100"
+    environment:
+      PLATFORM_HOST: 0.0.0.0
+      PLATFORM_PORT: 8100
+      PLATFORM_DB: /app/.platform-data/platform.db
+      PLATFORM_DATABASE_URL: postgresql://platform:${PLATFORM_POSTGRES_PASSWORD:-replace-with-platform-postgres-password}@platform-postgres:5432/platform_control
+      PLATFORM_LOG_LEVEL: INFO
+    volumes:
+      - ..:/app
+      - platform-data:/app/.platform-data
+    depends_on:
+      - platform-postgres
+
+  platform-postgres:
+    image: postgres:16-alpine
+    env_file:
+      - env.platform.example
+    environment:
+      POSTGRES_DB: platform_control
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: ${PLATFORM_POSTGRES_PASSWORD:-replace-with-platform-postgres-password}
+    volumes:
+      - platform-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  platform-data:
+  platform-postgres-data:

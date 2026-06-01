@@ -1,0 +1,28 @@
+{
+  "name": "agent-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 3000",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 3000",
+    "check": "tsc --noEmit",
+    "check:scaffold": "node scripts/check-scaffold.mjs",
+    "check:delivery-ui": "node scripts/check-delivery-ui.mjs",
+    "check:browser-smoke": "node -e \"console.log('browser smoke start')\" && playwright test --config playwright.config.ts"
+  },
+  "dependencies": {
+    "antd": "^5.27.6",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.0"
+  }
+}

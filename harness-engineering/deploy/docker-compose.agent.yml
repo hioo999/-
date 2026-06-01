@@ -1,0 +1,119 @@
+services:
+  agent-api:
+    build:
+      context: ..
+      dockerfile: services/agent-api/Dockerfile
+    image: v41-agent-api:local
+    working_dir: /app
+    command: python3 services/agent-api/server.py
+    env_file:
+      - env.agent.example
+    ports:
+      - "8200:8200"
+    environment:
+      AGENT_HOST: 0.0.0.0
+      AGENT_PORT: 8200
+      AGENT_DATA_DIR: /app/.agent-data
+      AGENT_PLATFORM_BASE_URL: http://host.docker.internal:8100
+      AGENT_LOCAL_DATABASE_URL: postgresql://agent:${AGENT_POSTGRES_PASSWORD:-replace-with-agent-postgres-password}@agent-postgres:5432/agent_local
+      AGENT_REDIS_URL: redis://redis:6379/0
+      AGENT_VECTOR_DATABASE_URL: http://qdrant:6333
+      AGENT_LOCAL_STORAGE_ROOT: /app/.agent-data/storage
+      AGENT_ALLOWED_FILE_EXTENSIONS: .pdf,.doc,.docx,.png,.jpg,.jpeg,.txt
+      AGENT_MAX_UPLOAD_SIZE_MB: 100
+    volumes:
+      - ..:/app
+      - agent-data:/app/.agent-data
+    depends_on:
+      - agent-postgres
+      - redis
+      - qdrant
+
+  agent-api-fastapi:
+    build:
+      context: ..
+      dockerfile: services/agent-api/Dockerfile
+    image: v41-agent-api:local
+    working_dir: /app
+    command: python3 -m uvicorn app.main:app --app-dir services/agent-api --host 0.0.0.0 --port 8201
+    env_file:
+      - env.agent.example
+    ports:
+      - "8201:8201"
+    environment:
+      AGENT_HOST: 0.0.0.0
+      AGENT_PORT: 8201
+      AGENT_DATA_DIR: /app/.agent-fastapi-data
+      AGENT_STORAGE_DIR: /app/.agent-fastapi-data/storage
+      AGENT_DB: /app/.agent-fastapi-data/agent.db
+      AGENT_PLATFORM_BASE_URL: http://host.docker.internal:8100
+      AGENT_LOCAL_DATABASE_URL: postgresql://agent:${AGENT_POSTGRES_PASSWORD:-replace-with-agent-postgres-password}@agent-postgres:5432/agent_local
+      AGENT_REDIS_URL: redis://redis:6379/0
+      AGENT_VECTOR_DATABASE_URL: http://qdrant:6333
+      AGENT_ALLOWED_FILE_EXTENSIONS: .pdf,.doc,.docx,.png,.jpg,.jpeg,.txt
+      AGENT_MAX_UPLOAD_SIZE_MB: 100
+    volumes:
+      - ..:/app
+      - agent-fastapi-data:/app/.agent-fastapi-data
+    depends_on:
+      - agent-postgres
+      - redis
+      - qdrant
+
+  agent-postgres:
+    image: postgres:16-alpine
+    env_file:
+      - env.agent.example
+    environment:
+      POSTGRES_DB: agent_local
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: ${AGENT_POSTGRES_PASSWORD:-replace-with-agent-postgres-password}
+    volumes:
+      - agent-postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.5
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  worker-parser:
+    image: python:3.12-slim
+    working_dir: /app
+    command:
+      - python3
+      - -c
+      - "print('worker-parser placeholder: replace with RQ worker in M1 implementation')"
+    volumes:
+      - ..:/app
+      - agent-data:/app/.agent-data
+    depends_on:
+      - redis
+      - agent-postgres
+
+  worker-embedding:
+    image: python:3.12-slim
+    working_dir: /app
+    command:
+      - python3
+      - -c
+      - "print('worker-embedding placeholder: replace with RQ worker in M1 implementation')"
+    volumes:
+      - ..:/app
+      - agent-data:/app/.agent-data
+    depends_on:
+      - redis
+      - qdrant
+
+volumes:
+  agent-data:
+  agent-fastapi-data:
+  agent-postgres-data:
+  redis-data:
+  qdrant-data:

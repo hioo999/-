@@ -1,0 +1,14 @@
+[project]
+name = "v41-platform-api"
+version = "0.1.0"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "pydantic",
+  "sqlalchemy",
+  "psycopg[binary]",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

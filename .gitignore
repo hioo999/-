@@ -16,6 +16,8 @@ dist/
 build/
 .next/
 .vite/
+*.tsbuildinfo
+*.egg-info/
 
 # Local virtual environments
 .venv/
@@ -27,6 +29,7 @@ harness-engineering/.venv-agent-api/
 .env.*
 !.env.example
 !*.env.example
+0 基础配置/
 
 # Logs and runtime data
 *.log
@@ -34,6 +37,7 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+harness-engineering/services/*/data/
 
 # Delivery/test artifacts
 *.tar.gz
@@ -44,3 +48,6 @@ harness-engineering/test-deliverables/
 
 # Local tool state
 .playwright-mcp/
+.kilo/agent-manager.json
+.harness/
+harness-engineering/.harness/

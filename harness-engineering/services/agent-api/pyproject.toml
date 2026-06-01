@@ -1,0 +1,32 @@
+[project]
+name = "v41-agent-api"
+version = "0.1.0"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "pydantic",
+  "sqlalchemy",
+  "psycopg[binary]",
+  "redis",
+  "rq",
+  "qdrant-client",
+  "PyMuPDF",
+  "python-docx",
+]
+
+[project.optional-dependencies]
+test = [
+  "httpx",
+  "pytest",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.setuptools]
+py-modules = ["server"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["data*"]
