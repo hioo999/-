@@ -1,0 +1,6 @@
+node_modules
+dist
+test-results
+e2e/.cache
+.vite
+.DS_Store

@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "name": "ip-system",
+  "layers": [
+    {
+      "name": "backend-models",
+      "pattern": "backend/models/**",
+      "allowedDependencies": []
+    },
+    {
+      "name": "backend-services",
+      "pattern": "backend/services/**",
+      "allowedDependencies": [
+        "backend-models"
+      ]
+    },
+    {
+      "name": "backend-api",
+      "pattern": "backend/api/**",
+      "allowedDependencies": [
+        "backend-models",
+        "backend-services"
+      ]
+    },
+    {
+      "name": "backend-video-engine",
+      "pattern": "backend/video_engine/**",
+      "allowedDependencies": [
+        "backend-models",
+        "backend-services"
+      ]
+    },
+    {
+      "name": "frontend-api",
+      "pattern": "frontend/src/api/**",
+      "allowedDependencies": []
+    },
+    {
+      "name": "frontend-ui",
+      "pattern": "frontend/src/**",
+      "allowedDependencies": [
+        "frontend-api"
+      ]
+    }
+  ],
+  "agentsMapPath": "./AGENTS.md",
+  "docsDir": "./docs",
+  "template": {
+    "level": "basic",
+    "version": 1
+  }
+}
