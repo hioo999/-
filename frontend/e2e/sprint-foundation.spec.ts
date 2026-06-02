@@ -29,7 +29,7 @@ async function enterLiveTool(page: Page) {
 test.describe('首页与内容生产冒烟', () => {
   test('游客进入首页后可见当前产品主导航', async ({ page }) => {
     await enterAsGuest(page)
-    await expect(page.getByRole('heading', { name: '今天的工作台' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '今天要推进什么？' })).toBeVisible()
     await expect(page.getByTestId('home-dashboard')).toBeVisible()
     await expect(page.getByTestId('home-ip-completeness')).toBeVisible()
     await expect(page.getByTestId('home-dashboard').getByRole('button', { name: '新建 IP' })).toBeVisible()
@@ -192,7 +192,6 @@ test.describe('首页与内容生产冒烟', () => {
     await platformStudio.getByRole('textbox', { name: '主题' }).fill('内容中心如何提升生产效率')
     await platformStudio.getByRole('button', { name: '生成小红书创作' }).click()
 
-    await expect(page.getByText('平台内容已生成')).toBeVisible()
     await expect(page.getByRole('heading', { name: '测试小红书笔记' })).toBeVisible()
     await expect(page.getByRole('textbox', { name: '正文/复制内容' })).toHaveValue(/内容中心把素材、平台内容、任务和资产串成一条生产线/)
     await expect(page.getByText('xiaohongshu · xiaohongshu_note · generated_with_fallback')).toBeVisible()

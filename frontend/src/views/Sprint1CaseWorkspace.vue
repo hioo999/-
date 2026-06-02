@@ -164,6 +164,10 @@ function resetForm() {
   ipForm.forbiddenExpressions = ''
 }
 
+function hasDraftFormInput() {
+  return Object.values(ipForm).some((value) => String(value || '').trim())
+}
+
 function buildPayload(): Sprint1IpAssetPayload {
   return {
     name: ipForm.name.trim(),
@@ -188,6 +192,10 @@ async function loadIpAssets() {
     if (!availableIps.value.length) {
       currentIp.value = null
       selectedIpId.value = ''
+      if (currentStage.value !== 'home' || hasDraftFormInput()) {
+        statusMessage.value = '新建 IP'
+        return
+      }
       resetForm()
       statusMessage.value = '暂无 IP'
       currentStage.value = 'home'
@@ -418,10 +426,7 @@ onMounted(() => {
   min-height: 100%;
   overflow: visible;
   padding: 28px;
-  background:
-    radial-gradient(circle at 8% 0%, rgba(37, 99, 235, 0.08), transparent 34%),
-    radial-gradient(circle at 92% 8%, rgba(124, 58, 237, 0.06), transparent 32%),
-    var(--color-bg-primary);
+  background: var(--color-bg-primary);
 }
 
 .sprint-hero,
@@ -468,8 +473,8 @@ onMounted(() => {
   padding: 14px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
 }
 
 .completeness-meter {
@@ -483,7 +488,7 @@ onMounted(() => {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--color-accent-gradient);
+  background: #2457ff;
   transition: width var(--transition-normal);
 }
 
@@ -522,7 +527,7 @@ onMounted(() => {
   padding: 9px 14px;
   border: 1px solid rgba(17, 24, 39, 0.08);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
+  background: #fff;
   color: #64748b;
   font-size: 13px;
   font-weight: 800;
@@ -557,14 +562,10 @@ onMounted(() => {
 }
 
 .glass-panel {
-  border: 1px solid var(--glass-border);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 24px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.7)),
-    var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: var(--shadow-sm);
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
 }
 
 .dashboard-grid {
@@ -581,7 +582,7 @@ onMounted(() => {
   padding: 14px 16px;
   border: 1px solid rgba(17, 24, 39, 0.08);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.78);
+  background: #fff;
   color: inherit;
   cursor: pointer;
   font: inherit;
@@ -671,7 +672,7 @@ select {
   border: 1px solid rgba(17, 24, 39, 0.1);
   border-radius: 16px;
   outline: none;
-  background: rgba(255, 255, 255, 0.86);
+  background: #fff;
   color: #111827;
   font: inherit;
   font-weight: 500;
@@ -704,7 +705,7 @@ label.invalid select {
   border: 0;
   padding: 11px 18px;
   border-radius: 999px;
-  background: var(--color-accent-gradient);
+  background: #2457ff;
   color: #fff;
   font: inherit;
   font-size: 14px;
@@ -716,7 +717,7 @@ label.invalid select {
 }
 
 .primary-pill:hover:not(:disabled) {
-  filter: saturate(1.05) brightness(1.02);
+  background: #1d4ed8;
   transform: translateY(-1px);
   box-shadow: 0 18px 44px rgba(37, 99, 235, 0.26);
 }

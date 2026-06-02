@@ -939,19 +939,16 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
   gap: 16px;
   min-height: 100%;
   overflow: visible;
-  padding: 24px;
-  background:
-    radial-gradient(circle at 8% 0%, rgba(34, 197, 94, 0.08), transparent 34%),
-    radial-gradient(circle at 92% 8%, rgba(37, 99, 235, 0.08), transparent 32%),
-    #f8fafc;
+  padding: 0;
+  background: transparent;
 }
 
 .studio-hero,
 .studio-card {
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.06);
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
 }
 
 .studio-hero {
@@ -1056,8 +1053,9 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
 }
 
 .mode-tabs button.active {
-  background: #0f172a;
-  color: #fff;
+  background: #eef3ff;
+  color: #2457ff;
+  box-shadow: inset 0 0 0 1px #dbe6ff;
 }
 
 .generate-grid,
@@ -1069,14 +1067,18 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
 }
 
 .generate-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 16px;
+}
+
+.generate-grid .form-panel:nth-child(3) {
+  grid-column: 1 / -1;
 }
 
 .form-panel {
   display: grid;
-  gap: 10px;
-  padding: 14px;
+  gap: 12px;
+  padding: 16px;
   border-radius: 18px;
   background: #f8fafc;
 }
@@ -1085,8 +1087,8 @@ label {
   display: grid;
   gap: 6px;
   color: #475569;
-  font-size: 12px;
-  font-weight: 850;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .input {
@@ -1275,9 +1277,10 @@ label {
 .export-card pre {
   overflow: auto;
   padding: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 16px;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: #f8fafc;
+  color: #0f172a;
   font-size: 12px;
   line-height: 1.6;
 }
@@ -1292,7 +1295,7 @@ label {
 
 @media (max-width: 720px) {
   .platform-studio {
-    padding: 14px;
+    padding: 0;
   }
 
   .studio-hero,

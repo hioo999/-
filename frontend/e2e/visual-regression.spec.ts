@@ -3,15 +3,15 @@ import { expect, test } from '@playwright/test'
 test.describe('核心界面视觉截图', () => {
   test('首页工作台截图', async ({ page }, testInfo) => {
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: '今天的工作台' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '今天要推进什么？' })).toBeVisible()
     await expect(page.getByTestId('home-dashboard')).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath('home-dashboard.png'), fullPage: true })
   })
 
   test('IP 内容生产工作台截图', async ({ page }, testInfo) => {
     await page.goto('/#/ip')
-    await expect(page.getByRole('heading', { name: 'IP 全案内容生产工作台' })).toBeVisible()
-    await expect(page.getByTestId('copilot-smart-suggestions')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '生产中心' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: '生产中心模块' })).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath('copilot-workbench.png'), fullPage: true })
   })
 

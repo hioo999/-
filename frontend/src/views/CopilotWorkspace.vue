@@ -3897,17 +3897,11 @@ function copyDramaMarkdown() {
   min-height: 100dvh;
   position: relative;
   z-index: 1;
-  background:
-    radial-gradient(circle at 8% 0%, rgba(37, 99, 235, 0.09), transparent 34%),
-    radial-gradient(circle at 92% 8%, rgba(124, 58, 237, 0.07), transparent 32%),
-    var(--color-bg-primary);
+  background: var(--color-bg-primary);
 }
 
 .workspace-home {
-  background:
-    radial-gradient(circle at 8% 0%, rgba(37, 99, 235, 0.08), transparent 34%),
-    radial-gradient(circle at 92% 8%, rgba(124, 58, 237, 0.06), transparent 32%),
-    var(--color-bg-primary);
+  background: var(--color-bg-primary);
 }
 
 /* ═══ Header ═══ */
@@ -3987,7 +3981,7 @@ function copyDramaMarkdown() {
   height: 30px;
   place-items: center;
   border-radius: 10px;
-  background: var(--color-accent-gradient);
+  background: var(--color-accent-primary);
   color: #fff;
   font-size: 12px;
   font-weight: 950;
@@ -4667,7 +4661,7 @@ function copyDramaMarkdown() {
 .file-upload-label:hover {
   border-color: var(--color-accent-primary);
   color: var(--color-text-primary);
-  background: rgba(107, 92, 231, 0.06);
+  background: rgba(36, 87, 255, 0.06);
 }
 
 .file-icon {
@@ -4697,8 +4691,8 @@ function copyDramaMarkdown() {
   max-width: 100%;
   padding: 5px 9px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.1);
-  color: #4f46e5;
+  background: rgba(36, 87, 255, 0.1);
+  color: #1d4ed8;
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4743,14 +4737,14 @@ function copyDramaMarkdown() {
   padding: 16px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 28px;
-  background: rgba(15, 23, 42, 0.92);
-  color: #e2e8f0;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
 }
 
 .sidecar-head h3 {
   margin: 4px 0 6px;
-  color: #fff;
+  color: #0f172a;
   font-size: 20px;
   font-weight: 950;
   letter-spacing: -0.04em;
@@ -4760,7 +4754,7 @@ function copyDramaMarkdown() {
 .sidecar-hint,
 .aip-steps {
   margin: 0;
-  color: #94a3b8;
+  color: #64748b;
   font-size: 12px;
   line-height: 1.65;
 }
@@ -4769,19 +4763,19 @@ function copyDramaMarkdown() {
   display: grid;
   gap: 9px;
   padding: 14px;
-  border: 1px solid rgba(226, 232, 240, 0.1);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.07);
+  background: #f8fafc;
 }
 
 .sidecar-card .form-label {
-  color: #cbd5e1;
+  color: #475569;
 }
 
 .sidecar-card .input {
-  border-color: rgba(226, 232, 240, 0.14);
-  background: rgba(15, 23, 42, 0.72);
-  color: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.1);
+  background: #fff;
+  color: #0f172a;
 }
 
 .sidecar-card .input::placeholder {
@@ -4796,14 +4790,14 @@ function copyDramaMarkdown() {
 }
 
 .sidecar-card-head strong {
-  color: #fff;
+  color: #0f172a;
   font-size: 14px;
   font-weight: 950;
 }
 
 .sidecar-card-head span {
   max-width: 150px;
-  color: #93c5fd;
+  color: #1d4ed8;
   font-size: 11px;
   font-weight: 800;
   text-align: right;
@@ -5068,7 +5062,7 @@ function copyDramaMarkdown() {
 }
 
 .bubble-user {
-  background: var(--color-accent-gradient);
+  background: var(--color-accent-primary);
   color: #fff;
   border-bottom-right-radius: 4px;
 }
@@ -5081,8 +5075,8 @@ function copyDramaMarkdown() {
 }
 
 .bubble-system {
-  background: rgba(107, 92, 231, 0.08);
-  border-color: rgba(107, 92, 231, 0.16);
+  background: rgba(36, 87, 255, 0.08);
+  border-color: rgba(36, 87, 255, 0.16);
 }
 
 .chat-content {
@@ -5162,9 +5156,9 @@ function copyDramaMarkdown() {
 }
 
 .mode-switcher .tab-item.active {
-  background: #0f172a;
-  color: #fff;
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.16);
+  background: #eef3ff;
+  color: var(--color-accent-primary);
+  box-shadow: inset 0 0 0 1px #dbe6ff;
 }
 
 /* ═══ 提示词管理面板 ═══ */
@@ -5174,10 +5168,7 @@ function copyDramaMarkdown() {
   align-content: start;
   overflow-y: auto;
   padding: 24px;
-  background:
-    radial-gradient(circle at 8% 0%, rgba(37, 99, 235, 0.08), transparent 34%),
-    radial-gradient(circle at 92% 8%, rgba(124, 58, 237, 0.06), transparent 32%),
-    var(--color-bg-primary);
+  background: var(--color-bg-primary);
 }
 
 .prompt-manager-head,
@@ -5559,8 +5550,8 @@ function copyDramaMarkdown() {
 }
 
 .drama-history-item:hover {
-  border-color: rgba(107, 92, 231, 0.32);
-  background: rgba(107, 92, 231, 0.05);
+  border-color: rgba(36, 87, 255, 0.28);
+  background: rgba(36, 87, 255, 0.06);
 }
 
 .drama-history-main {
@@ -5795,7 +5786,7 @@ function copyDramaMarkdown() {
 
 .ending-subtitle {
   padding: 14px 16px;
-  background: linear-gradient(135deg, rgba(107, 92, 231, 0.1), rgba(14, 165, 233, 0.06));
+  background: rgba(36, 87, 255, 0.08);
   border-left: 3px solid var(--color-accent-primary);
   border-radius: var(--radius-sm);
   font-weight: 600;
@@ -6082,7 +6073,7 @@ function copyDramaMarkdown() {
   color: var(--color-text-muted);
 }
 .strategy-hook {
-  color: #4f46e5 !important;
+  color: #1d4ed8 !important;
   font-weight: 700;
 }
 .short-video-workflow {
@@ -6093,8 +6084,8 @@ function copyDramaMarkdown() {
   align-items: center;
   padding: 5px 12px;
   border-radius: 999px;
-  background: rgba(79, 70, 229, 0.12);
-  color: #4f46e5;
+  background: rgba(36, 87, 255, 0.1);
+  color: #1d4ed8;
   font-size: 13px;
   font-weight: 800;
 }
@@ -6155,7 +6146,7 @@ function copyDramaMarkdown() {
   line-height: 1.7;
 }
 .video-aip-task-meta {
-  color: #4f46e5 !important;
+  color: #1d4ed8 !important;
   font-weight: 800;
 }
 .video-aip-artifact {
@@ -6164,8 +6155,8 @@ function copyDramaMarkdown() {
   margin: 10px 0;
   padding: 10px;
   border-radius: 14px;
-  background: rgba(79, 70, 229, 0.06);
-  border: 1px solid rgba(79, 70, 229, 0.12);
+  background: rgba(36, 87, 255, 0.06);
+  border: 1px solid rgba(36, 87, 255, 0.12);
 }
 .video-aip-artifact img,
 .video-aip-artifact video {
@@ -6173,10 +6164,10 @@ function copyDramaMarkdown() {
   max-height: 360px;
   object-fit: contain;
   border-radius: 12px;
-  background: #111827;
+  background: #f8fafc;
 }
 .video-aip-artifact a {
-  color: #4f46e5;
+  color: #1d4ed8;
   font-size: 13px;
   font-weight: 800;
   text-decoration: none;
@@ -6623,8 +6614,9 @@ function copyDramaMarkdown() {
   }
 
   .mobile-module-nav button.active {
-    background: #0f172a;
-    color: #fff;
+    background: #eef3ff;
+    color: var(--color-accent-primary);
+    box-shadow: inset 0 0 0 1px #dbe6ff;
   }
 
   .workspace:not(.workspace-home) .header-center,

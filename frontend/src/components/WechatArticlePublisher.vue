@@ -1234,16 +1234,16 @@ async function copyText(text: string, label: string) {
   gap: 16px;
   min-height: 100%;
   overflow: visible;
-  padding: 24px;
-  background: radial-gradient(circle at 10% 0%, rgba(37, 99, 235, 0.1), transparent 28%), #f8fafc;
+  padding: 0;
+  background: transparent;
 }
 
 .wechat-hero,
 .wechat-card {
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.07);
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
 }
 
 .wechat-hero {
@@ -1295,9 +1295,13 @@ async function copyText(text: string, label: string) {
 
 .wechat-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 0.95fr) minmax(320px, 0.9fr) minmax(300px, 0.75fr);
+  grid-template-columns: minmax(360px, 1fr) minmax(340px, 0.92fr);
   gap: 16px;
   align-items: start;
+}
+
+.wechat-side {
+  grid-column: 1 / -1;
 }
 
 .wechat-workbench {
@@ -1307,8 +1311,12 @@ async function copyText(text: string, label: string) {
 
 .workbench-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
   gap: 14px;
+}
+
+.workbench-column:nth-child(3) {
+  grid-column: 1 / -1;
 }
 
 .workbench-column,
@@ -1342,9 +1350,9 @@ async function copyText(text: string, label: string) {
 }
 
 .workbench-side-lists > div {
-  border: 1px solid rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 16px;
-  background: #f8fafc;
+  background: #fff;
   padding: 12px;
 }
 
@@ -1373,7 +1381,7 @@ async function copyText(text: string, label: string) {
   padding: 0;
   list-style: none;
   color: #475569;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -1407,9 +1415,9 @@ async function copyText(text: string, label: string) {
 .image-slot-panel {
   display: grid;
   gap: 12px;
-  border: 1px solid rgba(124, 58, 237, 0.12);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 18px;
-  background: #faf5ff;
+  background: #f8fafc;
   padding: 14px;
 }
 
@@ -1426,9 +1434,9 @@ async function copyText(text: string, label: string) {
 .image-slot-card {
   display: grid;
   gap: 10px;
-  border: 1px solid rgba(124, 58, 237, 0.14);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.76);
+  background: #fff;
   padding: 12px;
 }
 
@@ -1513,13 +1521,14 @@ label {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  background: #2457ff;
   color: #fff;
 }
 
 .btn-ghost {
-  background: #eef2ff;
-  color: #1e3a8a;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fff;
+  color: #0f172a;
 }
 
 .btn-danger {
@@ -1602,7 +1611,7 @@ label {
 .phone-frame {
   max-width: 390px;
   margin: 0 auto;
-  border: 10px solid #111827;
+  border: 10px solid #d1d5db;
   border-radius: 34px;
   background: #fff;
   overflow: hidden;
@@ -1711,13 +1720,15 @@ label {
 }
 
 @media (max-width: 1180px) {
-  .wechat-grid {
-    grid-template-columns: 1fr;
-  }
-
+  .wechat-grid,
   .workbench-grid,
   .workbench-side-lists {
     grid-template-columns: 1fr;
+  }
+
+  .workbench-column:nth-child(3),
+  .wechat-side {
+    grid-column: auto;
   }
 
   .wechat-hero,

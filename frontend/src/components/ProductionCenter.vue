@@ -579,11 +579,9 @@ function activate(tab: ProductionTab) {
 .production-card,
 .production-status-card,
 .production-tabs {
-  border: 1px solid rgba(29, 29, 31, 0.08);
-  background: rgba(255, 255, 255, 0.84);
-  box-shadow: var(--shadow-sm);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--color-border);
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
 }
 
 .production-hero {
@@ -594,8 +592,8 @@ function activate(tab: ProductionTab) {
   padding: 24px;
   border-radius: 28px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(239, 246, 255, 0.82)),
-    radial-gradient(circle at 90% 10%, rgba(124, 58, 237, 0.16), transparent 30%);
+    radial-gradient(circle at 92% 0%, rgba(36, 87, 255, 0.1), transparent 34%),
+    linear-gradient(135deg, #fff 0%, #fff 58%, #f5f7ff 100%);
 }
 
 .hero-copy h1 {
@@ -657,14 +655,14 @@ function activate(tab: ProductionTab) {
 }
 
 .production-status-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .production-status-card {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-height: 116px;
+  min-height: 104px;
   padding: 16px;
   border-radius: 22px;
 }
@@ -679,13 +677,17 @@ function activate(tab: ProductionTab) {
 }
 
 .production-status-card strong {
-  color: #111827;
-  font-size: 20px;
+  color: var(--color-text-primary);
+  font-size: 18px;
   letter-spacing: -0.5px;
 }
 
 .production-context-grid {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(320px, 1.15fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.material-card {
+  grid-column: 1 / -1;
 }
 
 .production-card {
@@ -759,9 +761,9 @@ function activate(tab: ProductionTab) {
 }
 
 .production-tabs button.active {
-  background: #111827;
-  color: #fff;
-  box-shadow: var(--shadow-md);
+  background: #eef3ff;
+  color: var(--color-accent-primary);
+  box-shadow: inset 0 0 0 1px #dbe6ff;
 }
 
 .production-tabs button span {
@@ -807,7 +809,7 @@ function activate(tab: ProductionTab) {
   border: 1px solid rgba(29, 29, 31, 0.08);
   border-radius: 16px;
   background: rgba(248, 250, 252, 0.8);
-  color: #111827;
+  color: var(--color-text-primary);
   text-align: left;
 }
 

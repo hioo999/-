@@ -69,11 +69,11 @@ onMounted(loadDashboard)
   gap: 16px;
   margin-bottom: 14px;
   padding: 14px 16px;
-  border: 1px solid rgba(251, 191, 36, 0.26);
+  border: 1px solid rgba(217, 119, 6, 0.22);
   border-radius: 18px;
-  background: rgba(120, 53, 15, 0.22);
-  color: #fde68a;
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.18);
+  background: rgba(217, 119, 6, 0.08);
+  color: #92400e;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
 }
 
 .dashboard-error div {

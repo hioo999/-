@@ -21,6 +21,7 @@ See [architecture.md](./architecture.md) for architectural decisions.
 
 ## Product Requirements
 
+- [PRD: MiniMax-Style Light Console Refactor](./prd-minimax-light-console-refactor.md)
 - [PRD: IP System Platform Restructure](./prd-ip-system-platform-restructure.md)
 - [Meeting Notes: IP System Restructure Next Steps](./meeting-ip-system-restructure-next-steps.md)
 - [Status: IP System Restructure Phase 1](./status-ip-system-restructure-phase1.md)

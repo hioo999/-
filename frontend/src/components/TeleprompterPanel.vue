@@ -1685,9 +1685,9 @@ onUnmounted(() => {
         </div>
 
         <div class="theme-picker compact-theme">
-          <button class="tab-item" :class="{ active: theme === 'dark' }" @click="theme = 'dark'">黑底</button>
+          <button class="tab-item" :class="{ active: theme === 'dark' }" @click="theme = 'dark'">经典</button>
           <button class="tab-item" :class="{ active: theme === 'warm' }" @click="theme = 'warm'">暖色</button>
-          <button class="tab-item" :class="{ active: theme === 'contrast' }" @click="theme = 'contrast'">高对比</button>
+          <button class="tab-item" :class="{ active: theme === 'contrast' }" @click="theme = 'contrast'">高可读</button>
         </div>
       </div>
     </section>
@@ -2008,13 +2008,13 @@ onUnmounted(() => {
 
 .play-btn {
   min-width: 76px;
-  background: #1d1d1f;
+  background: #2457ff;
   color: #fff;
-  box-shadow: 0 10px 24px rgba(29, 29, 31, 0.14);
+  box-shadow: 0 10px 24px rgba(36, 87, 255, 0.16);
 }
 
 .play-btn:hover {
-  background: #303033;
+  background: #1d4ed8;
 }
 
 .interact-btn {
@@ -2052,7 +2052,7 @@ onUnmounted(() => {
   padding: 9px 13px;
   border: 0;
   border-radius: 999px;
-  background: #1d1d1f;
+  background: #2457ff;
   color: #fff;
   font-family: var(--font-sans);
   font-size: 12px;
@@ -2186,17 +2186,18 @@ onUnmounted(() => {
 }
 
 .section-jump.active {
-  background: #1d1d1f;
-  color: #fff;
+  background: #eef3ff;
+  color: #2457ff;
+  box-shadow: inset 0 0 0 1px #dbe6ff;
 }
 
 .cloud-draft-panel {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid rgba(107, 92, 231, 0.14);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 22px;
-  background: linear-gradient(135deg, rgba(107, 92, 231, 0.08), rgba(14, 165, 233, 0.06));
+  background: #f8fafc;
 }
 
 .cloud-draft-head {
@@ -2250,9 +2251,9 @@ onUnmounted(() => {
 }
 
 .cloud-draft-item.active {
-  border-color: rgba(107, 92, 231, 0.42);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 10px 26px rgba(107, 92, 231, 0.1);
+  border-color: rgba(36, 87, 255, 0.28);
+  background: #fff;
+  box-shadow: 0 10px 26px rgba(36, 87, 255, 0.08);
 }
 
 .cloud-draft-main {
@@ -2346,7 +2347,7 @@ onUnmounted(() => {
   justify-content: center;
   border: 0;
   border-radius: 999px;
-  background: #1d1d1f;
+  background: #2457ff;
   color: #fff;
   font-size: 20px;
   font-weight: 900;
@@ -2355,7 +2356,7 @@ onUnmounted(() => {
 }
 
 .speed-step-btn:hover {
-  background: #303033;
+  background: #1d4ed8;
 }
 
 .setting-group input[type='range'] {
@@ -2457,8 +2458,8 @@ onUnmounted(() => {
   overflow: hidden;
   border: 1px solid rgba(29, 29, 31, 0.08);
   border-radius: 28px;
-  background: #050507;
-  box-shadow: 0 26px 70px rgba(29, 29, 31, 0.16);
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
 }
 
 .stage-toolbar {
@@ -2467,8 +2468,8 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 14px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(8, 8, 13, 0.92);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fff;
 }
 
 .stage-status {
@@ -2476,7 +2477,7 @@ onUnmounted(() => {
   min-width: 0;
   align-items: center;
   gap: 8px;
-  color: rgba(255, 255, 255, 0.72);
+  color: #475569;
   font-size: 13px;
 }
 
@@ -2492,20 +2493,20 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 7px 10px;
-  border: 1px solid rgba(116, 185, 255, 0.24);
+  border: 1px solid rgba(36, 87, 255, 0.16);
   border-radius: 999px;
-  background: rgba(116, 185, 255, 0.1);
-  color: rgba(255, 255, 255, 0.82);
+  background: rgba(36, 87, 255, 0.08);
+  color: #475569;
   font-size: 12px;
 }
 
 .remote-control-hint strong {
-  color: #9bd4ff;
+  color: #2457ff;
   font-weight: 900;
 }
 
 .remote-control-hint span {
-  color: rgba(255, 255, 255, 0.64);
+  color: #64748b;
   white-space: nowrap;
 }
 
@@ -2514,12 +2515,12 @@ onUnmounted(() => {
   height: 8px;
   border-radius: 50%;
   background: var(--color-warning);
-  box-shadow: 0 0 14px rgba(253, 203, 110, 0.4);
+  box-shadow: none;
 }
 
 .status-dot.playing {
   background: var(--color-success);
-  box-shadow: 0 0 14px rgba(0, 206, 201, 0.5);
+  box-shadow: none;
 }
 
 .stage-actions {
@@ -2530,24 +2531,24 @@ onUnmounted(() => {
 }
 
 .stage-actions .btn-ghost {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.78);
+  background: #fff;
+  border-color: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
 }
 
 .stage-actions .btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+  background: #eef3ff;
+  color: #2457ff;
 }
 
 .progress-track {
   height: 4px;
-  background: rgba(255, 255, 255, 0.08);
+  background: #eef2f7;
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #a29bfe, #74b9ff);
+  background: #2457ff;
   transition: width 0.15s linear;
 }
 
@@ -2555,6 +2556,7 @@ onUnmounted(() => {
   position: relative;
   flex: 1;
   overflow-y: auto;
+  background: #050507;
   padding: clamp(56px, 9vw, 128px) clamp(32px, 8vw, 118px);
   outline: none;
   cursor: grab;
@@ -2579,10 +2581,10 @@ onUnmounted(() => {
   align-items: center;
   width: fit-content;
   padding: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.62);
-  box-shadow: 0 16px 46px rgba(0, 0, 0, 0.36);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 16px 46px rgba(15, 23, 42, 0.16);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   cursor: grab;
@@ -2621,19 +2623,19 @@ onUnmounted(() => {
   min-width: 82px;
   flex-direction: column;
   align-items: center;
-  color: #fff;
+  color: #0f172a;
   cursor: grab;
   touch-action: none;
 }
 
 .runtime-speed-copy span {
-  color: rgba(255, 255, 255, 0.66);
+  color: #64748b;
   font-size: 11px;
   font-weight: 800;
 }
 
 .runtime-speed-copy strong {
-  color: #fff;
+  color: #0f172a;
   font-size: 21px;
   font-weight: 900;
 }
@@ -2653,8 +2655,8 @@ onUnmounted(() => {
   padding: 20px;
   border: 1px solid rgba(245, 158, 11, 0.42);
   border-radius: 24px;
-  background: rgba(20, 16, 11, 0.92);
-  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.42);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 26px 80px rgba(15, 23, 42, 0.16);
   transform: translate(-50%, -50%);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
@@ -2663,23 +2665,23 @@ onUnmounted(() => {
 .interaction-pause-panel strong {
   display: block;
   margin-bottom: 4px;
-  color: #fff3d7;
+  color: #92400e;
   font-size: 20px;
   font-weight: 900;
 }
 
 .interaction-pause-panel span {
-  color: rgba(255, 243, 215, 0.72);
+  color: #78350f;
   font-size: 13px;
 }
 
 .interaction-pause-panel textarea {
   min-height: 96px;
   padding: 12px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(15, 23, 42, 0.1);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: #fff;
+  color: #0f172a;
   font: inherit;
   line-height: 1.6;
   outline: none;
@@ -2786,15 +2788,15 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 8px;
   padding: 12px 16px 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.56);
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  color: #64748b;
   font-size: 12px;
 }
 
 .shortcut-strip span {
   padding: 4px 8px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.06);
+  background: #f8fafc;
 }
 
 .modal-backdrop {
