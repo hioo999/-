@@ -30,6 +30,7 @@ from api.copilot_routes import _persist_media_task_result  # noqa: E402
 from api.platform_routes import build_wechat_messages  # noqa: E402
 from models.persona import AIModelConfig, AdminOperationLog, ContentTopic, GenerationRecord, GenerationTask, IpProject, PlatformContent, UnifiedAsset, UserAccount, VideoAipProject, VideoAipStepTask, WechatAccount  # noqa: E402
 from services.wechat_publisher import WechatPublishError, encrypt_secret  # noqa: E402
+from video_engine.pixelle_video.utils.llm_util import _validate_gateway_base_url as validate_llm_gateway_base_url  # noqa: E402
 
 
 @dataclass
@@ -336,17 +337,18 @@ class PlatformAssetsTasksApiTest(unittest.TestCase):
         initial_key = "test-model-gateway-initial-secret"
         updated_key = "test-model-gateway-updated-secret"
 
-        created = self.client.post(
-            "/api/model-gateways",
-            json={
-                "name": "QA 模型中转",
-                "base_url": "https://models.example.com/v1",
-                "api_key": initial_key,
-                "provider_type": "openai_compatible",
-                "scope": "user",
-            },
-            headers=self.owner_headers,
-        )
+        with patch("api.model_routes.socket.getaddrinfo", return_value=[(None, None, None, None, ("8.8.8.8", 443))]):
+            created = self.client.post(
+                "/api/model-gateways",
+                json={
+                    "name": "QA 模型中转",
+                    "base_url": "https://models.example.com/v1",
+                    "api_key": initial_key,
+                    "provider_type": "openai_compatible",
+                    "scope": "user",
+                },
+                headers=self.owner_headers,
+            )
         self.assertEqual(created.status_code, 200, created.text)
         self.assertNotIn(initial_key, created.text)
         self.assertIn("api_key_masked", created.json()["data"])
@@ -363,35 +365,82 @@ class PlatformAssetsTasksApiTest(unittest.TestCase):
         self.assertNotIn(initial_key, cross_user_listed.text)
         self.assertNotIn(gateway_id, [item["id"] for item in cross_user_listed.json()["data"]])
 
-        cross_user_update = self.client.put(
-            f"/api/model-gateways/{gateway_id}",
-            json={
-                "name": "越权更新",
-                "base_url": "https://models.example.com/v1",
-                "api_key": updated_key,
-                "provider_type": "openai_compatible",
-                "scope": "user",
-            },
-            headers=self.other_headers,
-        )
+        with patch("api.model_routes.socket.getaddrinfo", return_value=[(None, None, None, None, ("8.8.8.8", 443))]):
+            cross_user_update = self.client.put(
+                f"/api/model-gateways/{gateway_id}",
+                json={
+                    "name": "越权更新",
+                    "base_url": "https://models.example.com/v1",
+                    "api_key": updated_key,
+                    "provider_type": "openai_compatible",
+                    "scope": "user",
+                },
+                headers=self.other_headers,
+            )
         self.assertEqual(cross_user_update.status_code, 404)
 
-        updated = self.client.put(
-            f"/api/model-gateways/{gateway_id}",
-            json={
-                "name": "QA 模型中转更新",
-                "base_url": "https://models.example.com/v1",
-                "api_key": updated_key,
-                "provider_type": "openai_compatible",
-                "scope": "user",
-            },
-            headers=self.owner_headers,
-        )
+        with patch("api.model_routes.socket.getaddrinfo", return_value=[(None, None, None, None, ("8.8.8.8", 443))]):
+            updated = self.client.put(
+                f"/api/model-gateways/{gateway_id}",
+                json={
+                    "name": "QA 模型中转更新",
+                    "base_url": "https://models.example.com/v1",
+                    "api_key": updated_key,
+                    "provider_type": "openai_compatible",
+                    "scope": "user",
+                },
+                headers=self.owner_headers,
+            )
         self.assertEqual(updated.status_code, 200, updated.text)
         self.assertNotIn(initial_key, updated.text)
         self.assertNotIn(updated_key, updated.text)
         self.assertIn("api_key_masked", updated.json()["data"])
         self.assertNotIn("api_key", updated.json()["data"])
+
+    def test_model_gateway_allows_mixed_dns_when_public_address_exists(self) -> None:
+        mixed_addresses = [
+            (None, None, None, None, ("10.0.0.5", 443)),
+            (None, None, None, None, ("8.8.8.8", 443)),
+        ]
+
+        with patch("api.model_routes.socket.getaddrinfo", return_value=mixed_addresses):
+            created = self.client.post(
+                "/api/model-gateways",
+                json={
+                    "name": "混合解析模型中转",
+                    "base_url": "https://models.example.com/v1",
+                    "api_key": "test-mixed-dns-secret",
+                    "provider_type": "openai_compatible",
+                    "scope": "user",
+                },
+                headers=self.owner_headers,
+            )
+        self.assertEqual(created.status_code, 200, created.text)
+
+        with patch("video_engine.pixelle_video.utils.llm_util.socket.getaddrinfo", return_value=mixed_addresses):
+            gateway = validate_llm_gateway_base_url("https://models.example.com/v1")
+        self.assertEqual(gateway.address, "8.8.8.8")
+
+    def test_model_gateway_rejects_dns_without_public_address(self) -> None:
+        private_addresses = [
+            (None, None, None, None, ("10.0.0.5", 443)),
+            (None, None, None, None, ("127.0.0.1", 443)),
+        ]
+
+        with patch("api.model_routes.socket.getaddrinfo", return_value=private_addresses):
+            created = self.client.post(
+                "/api/model-gateways",
+                json={
+                    "name": "内网解析模型中转",
+                    "base_url": "https://models.example.com/v1",
+                    "api_key": "test-private-dns-secret",
+                    "provider_type": "openai_compatible",
+                    "scope": "user",
+                },
+                headers=self.owner_headers,
+            )
+        self.assertEqual(created.status_code, 400, created.text)
+        self.assertIn("不能指向本机、内网或保留地址", created.text)
 
     def test_wechat_system_account_respects_authorized_user_ids(self) -> None:
         account_id = self._create_wechat_account(scope="system", authorized_user_ids=[self.owner_id])
@@ -585,7 +634,7 @@ class PlatformAssetsTasksApiTest(unittest.TestCase):
         self.assertEqual(updated_step["output"]["source_assets"][0]["filename"], "drink.png")
         self.assertGreater(updated_step["output"]["generation_task_id"], 0)
 
-        fallback_status = self.client.get("/api/video/tasks/video-aip-media-task")
+        fallback_status = self.client.get("/api/video/tasks/video-aip-media-task", headers=self.owner_headers)
         self.assertEqual(fallback_status.status_code, 200, fallback_status.text)
         self.assertEqual(fallback_status.json()["task_id"], "video-aip-media-task")
         self.assertEqual(fallback_status.json()["media_type"], "image")
@@ -681,6 +730,7 @@ class PlatformAssetsTasksApiTest(unittest.TestCase):
                 "workflow": {"steps": [{"key": "storyboard", "label": "九宫格分镜", "prompt": "生成九宫格产品分镜"}]},
                 "archive_markdown": "# 产品短视频工作流",
             },
+            headers=self.owner_headers,
         )
         self.assertEqual(short_video.status_code, 200, short_video.text)
         short_video_id = short_video.json()["data"]["id"]
@@ -915,10 +965,11 @@ class PlatformAssetsTasksApiTest(unittest.TestCase):
         self.assertEqual(image.status_code, 200, image.text)
         self.assertEqual(image.json()["data"]["content"]["imageSlots"][0]["imageUrl"], "https://cdn.example.com/xhs-cover.png")
 
+        png_bytes = b"\x89PNG\r\n\x1a\n" + b"fake-png-bytes"
         uploaded = self.client.post(
             f"/api/platform-contents/{content_id}/image-upload",
             data={"title": "本地上传首图", "slotIndex": "0", "insertToMarkdown": "true", "tags": "xiaohongshu,upload"},
-            files={"file": ("cover.png", b"fake-png-bytes", "image/png")},
+            files={"file": ("cover.png", png_bytes, "image/png")},
             headers=self.owner_headers,
         )
         self.assertEqual(uploaded.status_code, 200, uploaded.text)
@@ -930,7 +981,7 @@ class PlatformAssetsTasksApiTest(unittest.TestCase):
 
         downloaded = self.client.get(uploaded_asset["url"], headers=self.owner_headers)
         self.assertEqual(downloaded.status_code, 200, downloaded.text)
-        self.assertEqual(downloaded.content, b"fake-png-bytes")
+        self.assertEqual(downloaded.content, png_bytes)
 
         exported_with_assets = self.client.get(f"/api/platform-contents/{content_id}/export", headers=self.owner_headers)
         self.assertEqual(exported_with_assets.status_code, 200, exported_with_assets.text)

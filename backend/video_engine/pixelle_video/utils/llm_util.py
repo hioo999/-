@@ -17,8 +17,12 @@ Uses the standard OpenAI-compatible /v1/models endpoint.
 """
 
 import ipaddress
+import http.client
+import json
 import os
 import socket
+import ssl
+from dataclasses import dataclass
 from typing import List, Tuple
 from urllib.parse import urlparse
 
@@ -29,24 +33,97 @@ from loguru import logger
 ALLOW_PRIVATE_GATEWAY_URLS = os.getenv("MODEL_GATEWAY_ALLOW_PRIVATE_URLS", "").lower() in {"1", "true", "yes"}
 
 
-def _validate_gateway_base_url(base_url: str) -> str:
+@dataclass(frozen=True)
+class _ValidatedGatewayUrl:
+    base_url: str
+    scheme: str
+    hostname: str
+    port: int
+    address: str
+    path: str
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, address: str, server_hostname: str, *args, **kwargs):
+        super().__init__(address, *args, **kwargs)
+        self._server_hostname = server_hostname
+
+    def connect(self) -> None:
+        sock = socket.create_connection((self.host, self.port), self.timeout, self.source_address)
+        context = self._context or ssl.create_default_context()
+        self.sock = context.wrap_socket(sock, server_hostname=self._server_hostname)
+
+
+def _validate_gateway_base_url(base_url: str) -> _ValidatedGatewayUrl:
     value = (base_url or "").strip().rstrip("/")
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("Invalid model gateway URL")
     if parsed.username or parsed.password:
         raise ValueError("Model gateway URL must not include credentials")
+    if parsed.params or parsed.query or parsed.fragment:
+        raise ValueError("Model gateway URL must not include params, query, or fragment")
     if parsed.scheme != "https" and not ALLOW_PRIVATE_GATEWAY_URLS:
         raise ValueError("Model gateway URL must use HTTPS")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
     try:
-        infos = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+        infos = socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
         raise ValueError("Model gateway host cannot be resolved") from exc
-    for address in {info[4][0] for info in infos}:
-        ip = ipaddress.ip_address(address)
-        if not ALLOW_PRIVATE_GATEWAY_URLS and not ip.is_global:
-            raise ValueError("Model gateway host resolves to a non-public address")
-    return value
+    addresses = sorted({info[4][0] for info in infos})
+    if not addresses:
+        raise ValueError("Model gateway host cannot be resolved")
+    usable_addresses: list[str] = []
+    for address in addresses:
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError as exc:
+            raise ValueError("Model gateway host resolved to an invalid address") from exc
+        if ALLOW_PRIVATE_GATEWAY_URLS or ip.is_global:
+            usable_addresses.append(address)
+    if not usable_addresses:
+        raise ValueError("Model gateway host resolves to a non-public address")
+    return _ValidatedGatewayUrl(
+        base_url=value,
+        scheme=parsed.scheme,
+        hostname=parsed.hostname,
+        port=port,
+        address=usable_addresses[0],
+        path=parsed.path.rstrip("/"),
+    )
+
+
+def _host_header(hostname: str, port: int, scheme: str) -> str:
+    host = f"[{hostname}]" if ":" in hostname and not hostname.startswith("[") else hostname
+    default_port = 443 if scheme == "https" else 80
+    return host if port == default_port else f"{host}:{port}"
+
+
+def _gateway_request_url(gateway: _ValidatedGatewayUrl, path: str) -> str:
+    return f"{gateway.scheme}://{_host_header(gateway.hostname, gateway.port, gateway.scheme)}{path}"
+
+
+def _request_gateway_json(gateway: _ValidatedGatewayUrl, path: str, headers: dict[str, str], timeout: float) -> dict:
+    request_url = _gateway_request_url(gateway, path)
+    request = httpx.Request("GET", request_url)
+    try:
+        if gateway.scheme == "https":
+            conn = _PinnedHTTPSConnection(gateway.address, gateway.hostname, gateway.port, timeout=timeout)
+        else:
+            conn = http.client.HTTPConnection(gateway.address, gateway.port, timeout=timeout)
+        try:
+            conn.request("GET", path, headers={**headers, "Host": _host_header(gateway.hostname, gateway.port, gateway.scheme)})
+            response = conn.getresponse()
+            body = response.read()
+        finally:
+            conn.close()
+    except socket.timeout as exc:
+        raise httpx.TimeoutException("Connection timeout", request=request) from exc
+    except (OSError, http.client.HTTPException) as exc:
+        raise httpx.ConnectError("Connection failed", request=request) from exc
+    httpx_response = httpx.Response(response.status, content=body, request=request)
+    httpx_response.raise_for_status()
+    return json.loads(body.decode("utf-8"))
 
 
 def fetch_available_models(api_key: str, base_url: str, timeout: float = 10.0) -> List[str]:
@@ -68,34 +145,30 @@ def fetch_available_models(api_key: str, base_url: str, timeout: float = 10.0) -
         httpx.RequestError: If there's a network error
     """
     # Normalize base_url - ensure it ends with /v1 or similar
-    base_url = _validate_gateway_base_url(base_url)
+    gateway = _validate_gateway_base_url(base_url)
     
     # Build the models endpoint URL
     # Handle cases where base_url might or might not include /v1
-    if base_url.endswith("/v1"):
-        models_url = f"{base_url}/models"
+    if gateway.path.endswith("/v1"):
+        models_path = f"{gateway.path}/models"
     else:
-        models_url = f"{base_url}/v1/models"
+        models_path = f"{gateway.path}/v1/models"
     
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
     
-    logger.debug(f"Fetching models from: {models_url}")
+    logger.debug(f"Fetching models from: {_gateway_request_url(gateway, models_path)}")
     
-    with httpx.Client(timeout=timeout, follow_redirects=False) as client:
-        response = client.get(models_url, headers=headers)
-        response.raise_for_status()
+    data = _request_gateway_json(gateway, models_path, headers, timeout)
+    models = [model["id"] for model in data.get("data", [])]
         
-        data = response.json()
-        models = [model["id"] for model in data.get("data", [])]
+    # Sort models alphabetically for better UX
+    models.sort()
         
-        # Sort models alphabetically for better UX
-        models.sort()
-        
-        logger.debug(f"Fetched {len(models)} models")
-        return models
+    logger.debug(f"Fetched {len(models)} models")
+    return models
 
 
 def test_llm_connection(api_key: str, base_url: str, timeout: float = 10.0) -> Tuple[bool, str, int]:

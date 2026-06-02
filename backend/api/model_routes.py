@@ -100,13 +100,15 @@ def _validate_gateway_base_url(value: str) -> str:
         raise HTTPException(status_code=400, detail="模型中转地址域名无法解析") from None
 
     addresses = {info[4][0] for info in infos}
+    has_public_address = False
     for address in addresses:
         try:
             ip = ipaddress.ip_address(address)
         except ValueError:
             raise HTTPException(status_code=400, detail="模型中转地址解析结果无效") from None
-        if not ALLOW_PRIVATE_GATEWAY_URLS and not ip.is_global:
-            raise HTTPException(status_code=400, detail="模型中转地址不能指向本机、内网或保留地址")
+        has_public_address = has_public_address or ip.is_global
+    if not ALLOW_PRIVATE_GATEWAY_URLS and not has_public_address:
+        raise HTTPException(status_code=400, detail="模型中转地址不能指向本机、内网或保留地址")
     return base_url
 
 

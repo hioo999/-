@@ -1,4 +1,5 @@
 import { api, apiBaseURL } from './client'
+import type { VideoAssetAnalysisItem } from './videoAssets.types'
 export * from './auth'
 export * from './personas'
 export * from './strategy'
@@ -8,6 +9,7 @@ export * from './wechat.api'
 export * from './platformContent.api'
 export * from './tasks.api'
 export * from './assets.api'
+export * from './videoAssets.types'
 export * from './videoAip.api'
 
 // ─── 内容解析 ──────────────────────────────────────────────
@@ -1188,13 +1190,6 @@ export interface VideoTaskStatus {
   media_path: string | null
   duration: number | null
   file_size: number | null
-}
-
-export interface VideoAssetAnalysisItem {
-  filename: string
-  path: string
-  type: 'image' | 'video' | 'unknown'
-  description: string
 }
 
 export async function getVideoPipelines(): Promise<VideoPipelinesResponse> {

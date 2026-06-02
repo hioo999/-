@@ -457,17 +457,17 @@ async function handleSaveContent() {
 }
 
 async function handleDeleteContent(item: PlatformContentData) {
-  if (!window.confirm(`确认从工作台隐藏「${item.title || '未命名内容'}」吗？任务和生成记录会继续保留。`)) return
+  if (!window.confirm(`确认移除「${item.title || '未命名内容'}」吗？`)) return
   try {
-    const res = await deletePlatformContent(item.contentId)
+    await deletePlatformContent(item.contentId)
     if (currentContent.value?.contentId === item.contentId) {
       currentContent.value = null
       selectedContentId.value = 0
     }
-    setFeedback('success', `${res.message || '平台内容已隐藏'}；保留任务 ${res.data.retainedTasks} 条、生成记录 ${res.data.retainedGenerationRecords} 条。`)
+    setFeedback('success', '内容已从当前工作台移除。')
     await Promise.all([loadContents(), refreshSupportData(), loadWorkspaceOverview()])
   } catch (err: any) {
-    setFeedback('error', getErrorMessage(err, '隐藏平台内容失败'))
+    setFeedback('error', getErrorMessage(err, '移除内容失败'))
   }
 }
 
@@ -690,7 +690,7 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
       <div>
         <span class="section-eyebrow">Content Studio</span>
         <h2>多平台内容工作台</h2>
-        <p>在同一个 IP 项目下生成小红书图文、抖音/视频号口播，统一沉淀任务、资产、角色、分镜和发布配置。</p>
+        <p>在同一个 IP 项目下生成小红书图文、抖音/视频号口播，并整理素材、角色、分镜和发布配置。</p>
       </div>
       <div class="hero-actions">
         <span v-if="hasRunningSupportItems" class="polling-chip">任务轮询中</span>
@@ -700,12 +700,6 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
     </header>
 
     <div v-if="feedback" class="studio-feedback" :class="feedback.type">{{ feedback.message }}</div>
-
-    <section v-if="workspaceOverview?.retentionPolicy" class="studio-card retention-card">
-      <strong>保留策略</strong>
-      <span>{{ workspaceOverview.retentionPolicy.message }}</span>
-      <small>内容：{{ workspaceOverview.retentionPolicy.contentDelete }} · 资产：{{ workspaceOverview.retentionPolicy.assetDelete }} · 任务：{{ workspaceOverview.retentionPolicy.taskRetention }} · 生成记录：{{ workspaceOverview.retentionPolicy.generationRecordRetention }}</small>
-    </section>
 
     <section class="studio-card generate-card">
       <div class="mode-tabs" aria-label="平台类型">
@@ -807,17 +801,17 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
               <strong>{{ item.title || '未命名内容' }}</strong>
               <span>{{ item.status }} · {{ item.updatedAt?.slice(0, 10) }}</span>
             </button>
-            <button class="mini-link danger" @click="handleDeleteContent(item)">隐藏</button>
+            <button class="mini-link danger" @click="handleDeleteContent(item)">移除</button>
           </article>
         </section>
 
         <section class="studio-card side-card">
-          <div class="list-head"><strong>任务中心</strong><button class="mini-link" :disabled="isPollingSupportData" @click="refreshSupportData">{{ isPollingSupportData ? '刷新中' : '刷新' }}</button></div>
-          <p v-if="!tasks.length">暂无任务。</p>
+          <div class="list-head"><strong>生成进度</strong><button class="mini-link" :disabled="isPollingSupportData" @click="refreshSupportData">{{ isPollingSupportData ? '刷新中' : '刷新' }}</button></div>
+          <p v-if="!tasks.length">暂无生成进度。</p>
           <article v-for="task in tasks.slice(0, 6)" :key="task.taskId" class="compact-item">
             <span>{{ task.taskType }}</span>
             <strong>{{ task.status }} · {{ task.progress }}%</strong>
-            <small>{{ task.errorMessage || '无错误' }}</small>
+            <small>{{ task.status === 'failed' ? '生成失败，可稍后重试。' : '正在处理内容生成。' }}</small>
           </article>
         </section>
       </aside>
@@ -902,7 +896,7 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
       </article>
 
       <article class="studio-card">
-        <div class="card-head compact"><div><h3>分镜记录</h3><p>将口播或剧情拆成可复用分镜表，后续可进入短大片/剧本短视频链路。</p></div><button class="btn btn-primary btn-sm" @click="handleSaveStoryboard">保存分镜</button></div>
+        <div class="card-head compact"><div><h3>分镜记录</h3><p>将口播或剧情拆成分镜表，后续可进入短大片/剧本短视频链路。</p></div><button class="btn btn-primary btn-sm" @click="handleSaveStoryboard">保存分镜</button></div>
         <div class="mini-form-grid">
           <label>分镜标题<input v-model="storyboardForm.title" class="input" /></label>
           <label>类型<select v-model="storyboardForm.storyboardType" class="input"><option value="drama">剧本短视频</option><option value="cinematic">短大片</option><option value="talking_head">口播</option></select></label>

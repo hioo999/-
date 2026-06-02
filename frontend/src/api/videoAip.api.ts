@@ -1,13 +1,9 @@
 import { api } from './client'
 import type { AIModelConfigData } from './modelConfig.api'
 import type { PromptTemplateData } from './promptTemplates.api'
+import type { VideoAssetAnalysisItem } from './videoAssets.types'
 
-export interface VideoAipSourceAsset {
-  filename: string
-  path: string
-  type: 'image' | 'video' | 'unknown'
-  description: string
-}
+export type VideoAipSourceAsset = VideoAssetAnalysisItem
 
 export interface VideoAipPlanParams {
   title?: string

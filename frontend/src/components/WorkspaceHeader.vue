@@ -37,7 +37,7 @@ const emit = defineEmits<{
 const primaryNav: NavItem[] = [
   { label: '总览', mode: 'home', group: 'overview', title: '首页总览与快捷开工' },
   { label: '生产中心', mode: 'ip', group: 'produce', title: '围绕 IP 项目和内容选题组织素材、平台内容、任务和资产' },
-  { label: '发布工具', mode: 'platform', group: 'publish', title: '多平台内容、公众号排版和提词器兼容入口' },
+  { label: '发布工具', mode: 'platform', group: 'publish', title: '多平台内容与公众号排版兼容入口' },
   { label: '系统设置', mode: 'models', group: 'system', title: '模型中转与提示词配置' },
 ]
 
@@ -45,7 +45,6 @@ const groupedNav: NavItem[] = [
   { label: 'IP 档案库', mode: 'sprint1', group: 'produce', title: '全案底座 Sprint1' },
   { label: '多平台工作台', mode: 'platform', group: 'publish', title: '小红书、抖音、视频号内容生成与资产管理兼容入口' },
   { label: '反转剧编剧', mode: 'reversal', group: 'produce', title: '生成反转剧分镜脚本' },
-  { label: '在线提词器', mode: 'teleprompter', group: 'publish', title: '录制和直播提词器' },
   { label: '公众号排版', mode: 'wechat', group: 'publish', title: '公众号排版与草稿箱发布兼容入口' },
   { label: '模型中转', mode: 'models', group: 'system', title: '模型中转与默认模型' },
   { label: '提示词管理', mode: 'prompts', group: 'system', title: '提示词分类与模板管理', adminOnly: true },
@@ -114,7 +113,13 @@ function selectNav(item: NavItem) {
         <span>{{ currentUser.isGuest ? '游客' : currentUser.name }}</span>
       </div>
       <span v-if="isGuestUser" class="guest-scope-chip">仅提词器可用</span>
-      <button class="btn btn-ghost btn-sm" @click="emit('select', 'teleprompter')">在线提词器</button>
+      <button
+        class="teleprompter-nav-btn"
+        :class="{ active: workspaceMode === 'teleprompter' }"
+        :aria-current="workspaceMode === 'teleprompter' ? 'page' : undefined"
+        title="打开独立在线提词器"
+        @click="emit('select', 'teleprompter')"
+      >提词器</button>
       <button v-if="currentUser" class="btn btn-ghost btn-sm" @click="emit('logout')">退出</button>
       <button
         v-if="workspaceMode === 'reversal'"
@@ -332,6 +337,36 @@ function selectNav(item: NavItem) {
   border: 1px solid rgba(217, 119, 6, 0.22);
   background: rgba(217, 119, 6, 0.08);
   color: var(--color-warning);
+}
+
+.teleprompter-nav-btn {
+  min-height: 40px;
+  padding: 9px 15px;
+  border: 1px solid rgba(36, 87, 255, 0.2);
+  border-radius: 999px;
+  background: #eef3ff;
+  color: var(--color-accent-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+  transition: transform var(--transition-normal), border-color var(--transition-normal), background var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.teleprompter-nav-btn:hover,
+.teleprompter-nav-btn.active {
+  border-color: rgba(36, 87, 255, 0.36);
+  background: #dfe9ff;
+  box-shadow: 0 10px 22px rgba(36, 87, 255, 0.12);
+  transform: translateY(-1px);
+}
+
+.teleprompter-nav-btn:focus-visible {
+  outline: 3px solid rgba(36, 87, 255, 0.22);
+  outline-offset: 3px;
 }
 
 @media (max-width: 1100px) {

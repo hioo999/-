@@ -27,7 +27,8 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db():
     """初始化数据库，创建所有表"""
     Base.metadata.create_all(bind=engine)
-    _assert_non_sqlite_schema_ready()
+    if os.getenv("DB_SCHEMA_STARTUP_CHECK", "").lower() in {"1", "true", "yes"}:
+        _assert_non_sqlite_schema_ready()
     _ensure_user_account_columns()
     _ensure_generation_history_columns()
     _ensure_prompt_template_columns()

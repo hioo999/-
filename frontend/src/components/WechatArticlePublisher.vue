@@ -612,10 +612,10 @@ async function reuseAssetToArticle(asset: any) {
   try {
     const res = await reuseUnifiedAsset(asset.assetId, { platformContentId: platformContentId.value, slotIndex, insertToMarkdown: true })
     syncArticleContent(res.data.content)
-    feedback.value = { type: 'success', message: res.message || '资产已复用到正文图片位。' }
+    feedback.value = { type: 'success', message: '图片已插入正文。' }
     await Promise.all([handlePreview(), refreshTasksAndAssets()])
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '复用资产失败' }
+    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '插入图片失败' }
   } finally {
     activeAssetId.value = 0
   }
@@ -924,7 +924,7 @@ async function copyText(text: string, label: string) {
       <div>
         <span class="section-eyebrow">WeChat Publisher</span>
         <h2>公众号排版与草稿箱发布</h2>
-        <p>把二创后的内容转成公众号可用 HTML，自动处理封面和正文图片，并推送到微信公众号草稿箱。</p>
+        <p>把二创后的内容整理成公众号排版稿，处理封面和正文图片，并推送到微信公众号草稿箱。</p>
       </div>
       <div class="hero-actions">
         <button class="btn btn-ghost" :disabled="isLoading" @click="() => runPreflight()">发送前检查</button>
@@ -1029,24 +1029,24 @@ async function copyText(text: string, label: string) {
           </ul>
         </div>
         <div>
-          <strong>最近任务</strong>
-          <p v-if="!unifiedTasks.length">暂无任务记录。</p>
+          <strong>生成进度</strong>
+          <p v-if="!unifiedTasks.length">暂无生成进度。</p>
           <ul v-else>
             <li v-for="task in unifiedTasks.slice(0, 4)" :key="task.taskId" class="inline-list-item">
-              <span>{{ task.taskType }} · {{ task.status }} · {{ task.errorMessage || '无错误' }}</span>
+              <span>{{ task.taskType }} · {{ task.status === 'failed' ? '待处理' : task.status }}</span>
               <button v-if="task.status === 'failed'" class="mini-link" :disabled="activeTaskId === task.taskId" @click="retryTask(task)">重试</button>
             </li>
           </ul>
         </div>
         <div>
           <div class="list-headline">
-            <strong>生成记录</strong>
+            <strong>最近生成</strong>
             <button class="mini-link" @click="loadGenerationRecords">刷新</button>
           </div>
-          <p v-if="!generationRecords.length">暂无生成记录。</p>
+          <p v-if="!generationRecords.length">暂无生成内容。</p>
           <ul v-else>
             <li v-for="record in generationRecords.slice(0, 4)" :key="record.recordId" class="inline-list-item">
-              <span>#{{ record.recordId }} · {{ record.parseStatus }} · 模型 {{ record.modelSnapshot?.name || record.modelConfigId || '默认' }}</span>
+              <span>{{ record.createdAt?.slice(0, 16) || '刚刚' }} · {{ record.parseStatus === 'failed' ? '待处理' : '已生成' }}</span>
             </li>
           </ul>
         </div>
@@ -1059,7 +1059,7 @@ async function copyText(text: string, label: string) {
           <ul v-else>
             <li v-for="asset in unifiedAssets.slice(0, 4)" :key="asset.assetId" class="inline-list-item">
               <span>{{ asset.assetType }} · {{ asset.title || asset.url || '未命名资产' }}</span>
-              <button v-if="asset.assetType === 'image' && platformContentId && generatedArticle?.imageSlots?.length" class="mini-link" :disabled="activeAssetId === asset.assetId" @click="reuseAssetToArticle(asset)">复用</button>
+              <button v-if="asset.assetType === 'image' && platformContentId && generatedArticle?.imageSlots?.length" class="mini-link" :disabled="activeAssetId === asset.assetId" @click="reuseAssetToArticle(asset)">插入正文</button>
               <button v-if="asset.assetType === 'image' && platformContentId" class="mini-link" :disabled="activeAssetId === asset.assetId" @click="reuseAssetAsCover(asset)">设封面</button>
               <button class="mini-link danger" :disabled="activeAssetId === asset.assetId" @click="removeUnifiedAsset(asset)">删除</button>
             </li>
@@ -1071,7 +1071,7 @@ async function copyText(text: string, label: string) {
         <div class="card-head compact-head">
           <div>
             <strong>正文图片位</strong>
-            <p>生成或复用图片后会写入图片位，并自动插入到 Markdown，草稿发布时会进入公众号图片上传替换流程。</p>
+            <p>生成或选择图片后，可作为正文插图随文章一起整理。</p>
           </div>
         </div>
         <div class="image-slot-list">
@@ -1110,7 +1110,7 @@ async function copyText(text: string, label: string) {
         <div class="card-head">
           <div>
             <h3>文章内容</h3>
-            <p>正文使用 Markdown，排版后会转换为公众号内联 HTML。</p>
+            <p>编辑正文后，可更新预览并复制排版结果。</p>
           </div>
           <select v-model="style" class="select" @change="handlePreview">
             <option v-for="item in styleOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
@@ -1132,10 +1132,10 @@ async function copyText(text: string, label: string) {
           </label>
           <span v-if="generatedArticle?.coverAssetId" class="article-status">封面资产 #{{ generatedArticle.coverAssetId }}</span>
         </div>
-        <label>Markdown 正文<textarea ref="markdownTextarea" v-model="rawContent" class="input textarea markdown-input"></textarea></label>
+        <label>文章正文<textarea ref="markdownTextarea" v-model="rawContent" class="input textarea markdown-input"></textarea></label>
         <div class="action-row">
-          <button class="btn btn-ghost" @click="copyText(rawContent, 'Markdown')">复制 Markdown</button>
-          <button class="btn btn-ghost" :disabled="!formattedHtml" @click="copyText(formattedHtml, 'HTML')">复制 HTML</button>
+          <button class="btn btn-ghost" @click="copyText(rawContent, '正文')">复制正文</button>
+          <button class="btn btn-ghost" :disabled="!formattedHtml" @click="copyText(formattedHtml, '排版结果')">复制排版结果</button>
           <button class="btn btn-ghost" :disabled="!platformContentId" @click="insertImageAtCursor">在光标处插图</button>
         </div>
       </article>
@@ -1149,7 +1149,7 @@ async function copyText(text: string, label: string) {
             <iframe
               v-if="formattedHtml"
               class="rendered-frame"
-              title="公众号 HTML 安全预览"
+              title="公众号排版预览"
               sandbox=""
               :srcdoc="previewSrcdoc"
             ></iframe>
@@ -1210,7 +1210,7 @@ async function copyText(text: string, label: string) {
           <div class="card-head">
             <div>
               <h3>最近草稿</h3>
-              <p>记录每次推送结果和错误原因。</p>
+              <p>查看最近创建的公众号草稿状态。</p>
             </div>
             <button class="btn btn-ghost btn-sm" @click="refreshDrafts">刷新</button>
           </div>

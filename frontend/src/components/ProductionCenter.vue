@@ -98,7 +98,7 @@ const contentInitialContent = computed(() => materialForm.extractedContent || ma
 const hasActiveWork = computed(() => Boolean(selectedProjectId.value && selectedTopicId.value))
 
 const tabItems: Array<{ key: ProductionTab; label: string; desc: string }> = [
-  { key: 'overview', label: '选题总览', desc: '项目、选题、素材、任务、资产统一看板' },
+  { key: 'overview', label: '选题总览', desc: '项目、选题、素材和内容统一看板' },
   { key: 'wechat', label: '公众号闭环', desc: '文章生成、排版、封面、草稿箱' },
   { key: 'platform', label: '小红书/口播', desc: '小红书图文、抖音/视频号口播' },
   { key: 'teleprompter', label: '提词器', desc: '把口播稿带入录制或直播' },
@@ -109,8 +109,8 @@ const statusCards = computed(() => [
   { label: '当前项目', value: selectedProject.value?.name || '未选择', hint: selectedProject.value?.ipType || '先选择或创建 IP 项目' },
   { label: '当前选题', value: selectedTopic.value?.title || '未选择', hint: selectedTopic.value?.status || '选题承载跨平台内容' },
   { label: '平台内容', value: String(platformContents.value.length), hint: '公众号、小红书、口播等内容' },
-  { label: '任务状态', value: `${runningTasks.value.length} 运行 / ${failedTasks.value.length} 失败`, hint: '生成、图片、发布任务统一追踪' },
-  { label: '资产沉淀', value: String(assets.value.length), hint: '素材、文案、图片、视频和发布记录' },
+  { label: '生成进度', value: `${runningTasks.value.length} 进行中 / ${failedTasks.value.length} 待处理`, hint: '内容与图片生成状态' },
+  { label: '素材资产', value: String(assets.value.length), hint: '素材、文案、图片和视频' },
 ])
 
 watch(selectedProjectId, async () => {
@@ -343,12 +343,12 @@ function activate(tab: ProductionTab) {
       <div class="hero-copy">
         <span class="section-eyebrow">Production Center</span>
         <h1>生产中心</h1>
-        <p>围绕一个 IP 项目和一个内容选题，统一组织素材、平台内容、任务、资产和发布记录。</p>
+        <p>围绕一个 IP 项目和一个内容选题，统一组织素材、平台内容和交付资产。</p>
       </div>
       <div class="hero-actions">
-        <span v-if="runningTasks.length" class="production-chip active">{{ runningTasks.length }} 个任务运行中</span>
-        <span v-if="failedTasks.length" class="production-chip danger">{{ failedTasks.length }} 个任务失败</span>
-        <button class="btn btn-ghost" :disabled="isLoading" @click="loadInitialData">{{ isLoading ? '刷新中...' : '刷新生产上下文' }}</button>
+        <span v-if="runningTasks.length" class="production-chip active">{{ runningTasks.length }} 项生成中</span>
+        <span v-if="failedTasks.length" class="production-chip danger">{{ failedTasks.length }} 项待处理</span>
+        <button class="btn btn-ghost" :disabled="isLoading" @click="loadInitialData">{{ isLoading ? '刷新中...' : '刷新内容' }}</button>
       </div>
     </header>
 
@@ -396,7 +396,7 @@ function activate(tab: ProductionTab) {
         <div class="card-head compact">
           <div>
             <h3>内容选题</h3>
-            <p>选题是一次生产任务的业务容器，后续平台内容都归属到这里。</p>
+            <p>选题用于承载一次内容生产，后续平台内容都归属到这里。</p>
           </div>
           <button class="btn btn-primary btn-sm" :disabled="!selectedProjectId || isCreatingTopic" @click="handleCreateTopic">{{ isCreatingTopic ? '创建中...' : '创建选题' }}</button>
         </div>
@@ -429,7 +429,7 @@ function activate(tab: ProductionTab) {
         <div class="card-head compact">
           <div>
             <h3>素材输入</h3>
-            <p>主题、链接和原文先沉淀为当前选题素材，再供公众号、小红书和口播生成复用。</p>
+            <p>主题、链接和原文会整理为当前选题素材，便于生成公众号、小红书和口播内容。</p>
           </div>
           <button class="btn btn-primary btn-sm" :disabled="isSavingMaterial" @click="handleSaveMaterial">{{ isSavingMaterial ? '保存中...' : '保存素材' }}</button>
         </div>
@@ -460,7 +460,7 @@ function activate(tab: ProductionTab) {
             <div>
               <span class="section-eyebrow">Topic Overview</span>
               <h2>{{ selectedTopic?.title || '等待选择内容选题' }}</h2>
-              <p>{{ hasActiveWork ? '当前选题下的平台内容、任务、资产和发布记录会在这里汇总。' : '先选择或创建 IP 项目与内容选题，再开始生产。' }}</p>
+              <p>{{ hasActiveWork ? '当前选题下的平台内容和素材资产会在这里汇总。' : '先选择或创建 IP 项目与内容选题，再开始生产。' }}</p>
             </div>
             <div class="card-actions">
               <button class="btn btn-primary" :disabled="!hasActiveWork" @click="activeTab = 'wechat'">进入公众号闭环</button>
@@ -517,7 +517,7 @@ function activate(tab: ProductionTab) {
         <section v-else class="production-card advanced-panel">
           <span class="section-eyebrow">Advanced Video</span>
           <h2>高级视频生产入口</h2>
-          <p>短大片和剧本短视频后续会以当前项目和选题为上下文，统一写入任务中心和资产库。</p>
+          <p>短大片和剧本短视频后续会沿用当前项目和选题，形成完整视频资产。</p>
           <div class="advanced-grid">
             <article>
               <strong>短大片工厂</strong>
@@ -533,12 +533,12 @@ function activate(tab: ProductionTab) {
 
       <aside class="production-side-panel">
         <section class="production-card side-card">
-          <div class="side-head"><strong>任务中心</strong><button class="mini-link" @click="refreshContextData">刷新</button></div>
-          <p v-if="!tasks.length">暂无任务。</p>
+          <div class="side-head"><strong>生成进度</strong><button class="mini-link" @click="refreshContextData">刷新</button></div>
+          <p v-if="!tasks.length">暂无生成进度。</p>
           <article v-for="task in tasks.slice(0, 8)" :key="task.taskId" class="compact-item task-item">
             <span>{{ task.taskType || 'task' }}</span>
             <strong>{{ task.status }} · {{ task.progress || 0 }}%</strong>
-            <small>{{ task.errorMessage || task.error || '无错误' }}</small>
+            <small>{{ task.status === 'failed' ? '生成失败，可点击重试。' : '正在处理内容生成。' }}</small>
             <button v-if="task.status === 'failed'" class="mini-link danger" :disabled="isRetryingTaskId === task.taskId" @click="handleRetryTask(task)">重试</button>
           </article>
         </section>
@@ -554,12 +554,12 @@ function activate(tab: ProductionTab) {
         </section>
 
         <section class="production-card side-card">
-          <div class="side-head"><strong>生成记录</strong><button class="mini-link" @click="refreshContextData">刷新</button></div>
-          <p v-if="!generationRecords.length">暂无生成记录。</p>
+          <div class="side-head"><strong>最近生成</strong><button class="mini-link" @click="refreshContextData">刷新</button></div>
+          <p v-if="!generationRecords.length">暂无生成内容。</p>
           <article v-for="record in generationRecords.slice(0, 6)" :key="record.recordId" class="compact-item">
-            <span>{{ record.parseStatus || 'record' }} · {{ record.createdAt?.slice(0, 16) }}</span>
-            <strong>{{ record.promptSnapshot?.templateKey || record.promptSnapshot?.name || record.modelSnapshot?.name || '生成记录' }}</strong>
-            <small>{{ record.modelSnapshot?.provider || record.modelSnapshot?.model_id || record.modelSnapshot?.modelId || '模型快照待补充' }}</small>
+            <span>{{ record.createdAt?.slice(0, 16) || '刚刚' }}</span>
+            <strong>{{ record.promptSnapshot?.name || '内容生成' }}</strong>
+            <small>{{ record.parseStatus === 'failed' ? '生成未完成' : '生成已完成' }}</small>
           </article>
         </section>
       </aside>

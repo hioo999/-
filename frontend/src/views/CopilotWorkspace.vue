@@ -3719,7 +3719,7 @@ function copyDramaMarkdown() {
         <div class="drama-result-area" v-if="dramaResult">
           <div class="drama-result-header">
             <h3 class="drama-section-title">📜 生成结果</h3>
-            <button class="btn btn-ghost btn-sm" @click="copyDramaMarkdown">📋 复制全文 Markdown</button>
+            <button class="btn btn-ghost btn-sm" @click="copyDramaMarkdown">复制全文</button>
           </div>
 
           <!-- 剧本概览 -->
@@ -3787,9 +3787,9 @@ function copyDramaMarkdown() {
             </ul>
           </div>
 
-          <!-- Raw markdown 折叠 -->
+          <!-- 原始内容折叠 -->
           <details class="raw-md-details">
-            <summary>查看原始 Markdown</summary>
+            <summary>查看原始内容</summary>
             <pre class="content-text">{{ dramaResult.raw_markdown }}</pre>
           </details>
         </div>
