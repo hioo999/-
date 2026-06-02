@@ -27,6 +27,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db():
     """初始化数据库，创建所有表"""
     Base.metadata.create_all(bind=engine)
+    _assert_non_sqlite_schema_ready()
     _ensure_user_account_columns()
     _ensure_generation_history_columns()
     _ensure_prompt_template_columns()
@@ -63,6 +64,73 @@ def _ensure_admin_account():
             is_admin=True,
         ))
         db.commit()
+
+
+def _required_existing_columns() -> dict[str, set[str]]:
+    return {
+        "user_accounts": {"is_admin"},
+        "generation_history": {
+            "prompt_template_id",
+            "prompt_template_key",
+            "prompt_template_version",
+            "prompt_template_category",
+            "text_model_config_id",
+            "cover_prompt_template_id",
+            "cover_model_config_id",
+            "video_prompt_template_id",
+            "video_model_config_id",
+            "generation_params_json",
+        },
+        "prompt_template_categories": {"template_type"},
+        "prompt_templates": {
+            "template_type",
+            "platform",
+            "scene",
+            "step",
+            "user_prompt_hint",
+            "default_params_json",
+            "default_model_config_id",
+        },
+        "ai_model_configs": {"user_id", "gateway_id", "recommendation_label", "recommendation_reason", "risk_note", "last_seen_at"},
+        "wechat_draft_records": {
+            "idempotency_key",
+            "project_id",
+            "topic_id",
+            "platform_content_id",
+            "task_id",
+            "theme_id",
+            "cover_asset_id",
+            "contains_ai_images",
+            "preflight_result_json",
+        },
+        "wechat_accounts": {"scope", "authorized_user_ids_json"},
+        "ip_projects": {"is_active"},
+        "content_topics": {"is_active"},
+        "source_materials": {"is_active"},
+        "platform_contents": {"is_active"},
+        "assets": {"status"},
+        "generation_tasks": {"raw_response_excerpt", "retry_count", "parent_task_id"},
+        "video_aip_projects": {"user_id", "source_type", "source_ref_id", "source_assets_json"},
+        "short_video_projects": {"user_id"},
+    }
+
+
+def _assert_non_sqlite_schema_ready() -> None:
+    if DATABASE_URL.startswith("sqlite"):
+        return
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+    missing: list[str] = []
+    for table_name, required_columns in _required_existing_columns().items():
+        if table_name not in table_names:
+            continue
+        existing = {column["name"] for column in inspector.get_columns(table_name)}
+        for column_name in sorted(required_columns - existing):
+            missing.append(f"{table_name}.{column_name}")
+    if missing:
+        preview = ", ".join(missing[:20])
+        more = f" 等 {len(missing)} 项" if len(missing) > 20 else ""
+        raise RuntimeError(f"数据库结构缺少必要字段，请先执行迁移：{preview}{more}")
 
 
 def _ensure_user_account_columns():

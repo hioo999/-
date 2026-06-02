@@ -13,6 +13,7 @@ __pycache__/
 dist/
 test-results/
 playwright-report/
+.playwright-mcp/
 .vite/
 
 # Local runtime data

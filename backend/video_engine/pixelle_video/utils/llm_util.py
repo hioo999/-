@@ -16,9 +16,37 @@ LLM utility functions for model discovery and connection testing.
 Uses the standard OpenAI-compatible /v1/models endpoint.
 """
 
+import ipaddress
+import os
+import socket
 from typing import List, Tuple
+from urllib.parse import urlparse
+
 import httpx
 from loguru import logger
+
+
+ALLOW_PRIVATE_GATEWAY_URLS = os.getenv("MODEL_GATEWAY_ALLOW_PRIVATE_URLS", "").lower() in {"1", "true", "yes"}
+
+
+def _validate_gateway_base_url(base_url: str) -> str:
+    value = (base_url or "").strip().rstrip("/")
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Invalid model gateway URL")
+    if parsed.username or parsed.password:
+        raise ValueError("Model gateway URL must not include credentials")
+    if parsed.scheme != "https" and not ALLOW_PRIVATE_GATEWAY_URLS:
+        raise ValueError("Model gateway URL must use HTTPS")
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise ValueError("Model gateway host cannot be resolved") from exc
+    for address in {info[4][0] for info in infos}:
+        ip = ipaddress.ip_address(address)
+        if not ALLOW_PRIVATE_GATEWAY_URLS and not ip.is_global:
+            raise ValueError("Model gateway host resolves to a non-public address")
+    return value
 
 
 def fetch_available_models(api_key: str, base_url: str, timeout: float = 10.0) -> List[str]:
@@ -40,7 +68,7 @@ def fetch_available_models(api_key: str, base_url: str, timeout: float = 10.0) -
         httpx.RequestError: If there's a network error
     """
     # Normalize base_url - ensure it ends with /v1 or similar
-    base_url = base_url.rstrip("/")
+    base_url = _validate_gateway_base_url(base_url)
     
     # Build the models endpoint URL
     # Handle cases where base_url might or might not include /v1
@@ -56,7 +84,7 @@ def fetch_available_models(api_key: str, base_url: str, timeout: float = 10.0) -
     
     logger.debug(f"Fetching models from: {models_url}")
     
-    with httpx.Client(timeout=timeout) as client:
+    with httpx.Client(timeout=timeout, follow_redirects=False) as client:
         response = client.get(models_url, headers=headers)
         response.raise_for_status()
         

@@ -442,6 +442,24 @@ def _asset_type(path: Path) -> str:
     return "unknown"
 
 
+def _asset_magic_matches(ext: str, data: bytes) -> bool:
+    if ext in {".jpg", ".jpeg"}:
+        return data.startswith(b"\xff\xd8\xff")
+    if ext == ".png":
+        return data.startswith(b"\x89PNG\r\n\x1a\n")
+    if ext == ".gif":
+        return data.startswith((b"GIF87a", b"GIF89a"))
+    if ext == ".webp":
+        return len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+    if ext in {".mp4", ".mov"}:
+        return len(data) >= 12 and data[4:8] == b"ftyp"
+    if ext == ".avi":
+        return len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"AVI "
+    if ext in {".mkv", ".webm"}:
+        return data.startswith(b"\x1a\x45\xdf\xa3")
+    return False
+
+
 async def _save_asset_uploads(files: list[UploadFile]) -> list[Path]:
     from pixelle_video.utils.os_util import get_data_path
 
@@ -463,11 +481,18 @@ async def _save_asset_uploads(files: list[UploadFile]) -> list[Path]:
             path = batch_dir / f"{uuid.uuid4().hex}_{filename}"
             size = 0
             with path.open("wb") as f:
+                checked_magic = False
                 while chunk := await upload.read(1024 * 1024):
+                    if not checked_magic:
+                        checked_magic = True
+                        if not _asset_magic_matches(ext, chunk):
+                            raise HTTPException(status_code=400, detail="素材文件内容与格式不匹配")
                     size += len(chunk)
                     if size > MAX_ASSET_UPLOAD_BYTES:
                         raise HTTPException(status_code=400, detail="单个素材文件不能超过 50MB")
                     f.write(chunk)
+                if not checked_magic:
+                    raise HTTPException(status_code=400, detail="素材文件不能为空")
             saved.append(path)
     except Exception:
         shutil.rmtree(batch_dir, ignore_errors=True)

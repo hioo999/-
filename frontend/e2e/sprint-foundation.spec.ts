@@ -29,7 +29,7 @@ async function enterLiveTool(page: Page) {
 test.describe('首页与内容生产冒烟', () => {
   test('游客进入首页后可见当前产品主导航', async ({ page }) => {
     await enterAsGuest(page)
-    await expect(page.getByRole('heading', { name: '今天要推进什么？' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '把个人 IP 打造成可持续内容资产' })).toBeVisible()
     await expect(page.getByTestId('home-dashboard')).toBeVisible()
     await expect(page.getByTestId('home-ip-completeness')).toBeVisible()
     await expect(page.getByTestId('home-dashboard').getByRole('button', { name: '新建 IP' })).toBeVisible()

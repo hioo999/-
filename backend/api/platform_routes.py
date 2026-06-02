@@ -68,6 +68,18 @@ def _is_relative_to(path: Path, root: Path) -> bool:
         return False
 
 
+def _image_magic_matches(ext: str, data: bytes) -> bool:
+    if ext in {".jpg", ".jpeg"}:
+        return data.startswith(b"\xff\xd8\xff")
+    if ext == ".png":
+        return data.startswith(b"\x89PNG\r\n\x1a\n")
+    if ext == ".gif":
+        return data.startswith((b"GIF87a", b"GIF89a"))
+    if ext == ".webp":
+        return len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+    return False
+
+
 class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=160)
     ipType: str = Field("personal_ip", max_length=80)
@@ -434,11 +446,18 @@ async def _save_platform_image_upload(file: UploadFile, user: UserAccount, conte
     size = 0
     try:
         with storage_path.open("wb") as target:
+            checked_magic = False
             while chunk := await file.read(1024 * 1024):
+                if not checked_magic:
+                    checked_magic = True
+                    if not _image_magic_matches(ext, chunk):
+                        raise HTTPException(status_code=400, detail="图片文件内容与格式不匹配")
                 size += len(chunk)
                 if size > MAX_PLATFORM_IMAGE_UPLOAD_BYTES:
                     raise HTTPException(status_code=400, detail="图片文件不能超过 10MB")
                 target.write(chunk)
+            if not checked_magic:
+                raise HTTPException(status_code=400, detail="图片文件不能为空")
     except Exception:
         if storage_path.exists():
             storage_path.unlink()
