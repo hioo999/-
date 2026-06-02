@@ -57,7 +57,8 @@ function buildMenuItems(knowledgeBases: KnowledgeBase[]): MenuProps['items'] {
       type: 'group',
       label: '设置',
       children: [
-      { key: 'models', label: '模型配置' }
+      { key: 'models', label: '模型配置' },
+      { key: 'delivery', label: '交付验收' }
       ]
     }
   ];
@@ -66,7 +67,8 @@ function buildMenuItems(knowledgeBases: KnowledgeBase[]): MenuProps['items'] {
 const routeLabels: Record<RouteKey, string> = {
   'knowledge-bases': '知识库工作台',
   sources: '本地目录',
-  models: '模型配置'
+  models: '模型配置',
+  delivery: '交付验收'
 };
 
 const routeKeys = new Set<RouteKey>(Object.keys(routeLabels) as RouteKey[]);

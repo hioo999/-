@@ -163,7 +163,7 @@ export function KnowledgeBaseChatPanel({
           citations: restoredCitations,
           session_id: sessionId,
           message_id: lastAnswer.id,
-          insufficient_evidence: !lastAnswer.has_citations || restoredCitations.length === 0,
+          insufficient_evidence: lastAnswer.insufficient_evidence ?? (!lastAnswer.has_citations || restoredCitations.length === 0),
           model_status: 'history',
           model_used: undefined
         });

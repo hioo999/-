@@ -98,6 +98,10 @@ body,
   margin-top: 16px;
 }
 
+.full-width-stack {
+  width: 100%;
+}
+
 .home-hero-card {
   overflow: hidden;
   color: var(--color-foreground);

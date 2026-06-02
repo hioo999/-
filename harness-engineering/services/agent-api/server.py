@@ -55,6 +55,8 @@ ALLOWED_FILE_EXTENSIONS = {
 }
 MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("AGENT_MAX_UPLOAD_SIZE_MB", "100")) * 1024 * 1024
 MODEL_REQUEST_TIMEOUT_SECONDS = float(os.environ.get("AGENT_MODEL_REQUEST_TIMEOUT_SECONDS", "15"))
+MODEL_CONNECTIVITY_TIMEOUT_SECONDS = float(os.environ.get("AGENT_MODEL_CONNECTIVITY_TIMEOUT_SECONDS", "2"))
+MODEL_CONNECTIVITY_PROBE_LOCAL_DNS = os.environ.get("AGENT_MODEL_CONNECTIVITY_PROBE_LOCAL_DNS", "0") == "1"
 QDRANT_URL = os.environ.get("AGENT_QDRANT_URL", "").rstrip("/")
 QDRANT_COLLECTION = os.environ.get("AGENT_QDRANT_COLLECTION", "case_chunks")
 QDRANT_TIMEOUT_SECONDS = float(os.environ.get("AGENT_QDRANT_TIMEOUT_SECONDS", "5"))
@@ -690,6 +692,14 @@ def is_allowed_local_url(url: str) -> bool:
         return ip.is_loopback or ip.is_private or ip.is_link_local
     except ValueError:
         return False
+
+
+def should_probe_model_connectivity_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host.endswith(".local") and not MODEL_CONNECTIVITY_PROBE_LOCAL_DNS:
+        return False
+    return True
 
 
 class Store:
@@ -4245,6 +4255,23 @@ class Store:
             return False
         return True
 
+    def scope_allows_ai_usage(self, scope_id: str, generate: bool) -> bool:
+        row = self.conn.execute("SELECT * FROM knowledge_bases WHERE id = ?", (scope_id,)).fetchone()
+        if not row:
+            return True
+        kb = self.normalize_knowledge_base(row)
+        if kb.get("status") != "active":
+            return False
+        if not kb.get("ai_enabled") or kb.get("ai_usage_policy") == "disabled" or kb.get("review_status") == "ai_disabled":
+            return False
+        if generate and kb.get("ai_usage_policy") == "search_only":
+            return False
+        if generate and kb.get("review_status") not in {"published", "needs_update"}:
+            return False
+        if generate and kb.get("expires_at") and int(kb["expires_at"]) <= now():
+            return False
+        return True
+
     def governance_flags_for_file(self, file: dict[str, Any]) -> list[str]:
         flags = []
         if file.get("expires_at") and int(file["expires_at"]) <= now():
@@ -4285,6 +4312,8 @@ class Store:
         return hit
 
     def search(self, scope_id: str, question: str, limit: int = 5, user_id: str | None = None, generate: bool = False) -> list[dict[str, Any]]:
+        if not self.scope_allows_ai_usage(scope_id, generate=generate):
+            return []
         vector_hits = self.vector_search(scope_id, question, limit)
         if vector_hits:
             hits = vector_hits
@@ -4789,6 +4818,7 @@ class Store:
         messages = []
         for row in rows:
             message = dict(row)
+            message["insufficient_evidence"] = bool(message.get("role") == "assistant" and not int(message.get("has_citations") or 0))
             if message.get("role") == "assistant" and int(message.get("has_citations") or 0):
                 citation_rows = self.conn.execute(
                     """
@@ -4942,6 +4972,19 @@ class Store:
         status = "failed"
         error_code = None
         message = "connectivity check failed"
+        if not should_probe_model_connectivity_url(base_url):
+            return {
+                "config_id": config_id,
+                "mode": mode,
+                "provider": config["provider"],
+                "model": model_name,
+                "base_url": config["base_url"],
+                "status": status,
+                "message": "model .local DNS probe is disabled by default",
+                "error_code": "LOCAL_DNS_PROBE_DISABLED",
+                "latency_ms": int((time.time() - started) * 1000),
+                "api_key_configured": bool(api_key),
+            }
         try:
             data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(
@@ -4950,7 +4993,7 @@ class Store:
                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310 - configured lawyer-side model URL
+            with urllib.request.urlopen(req, timeout=MODEL_CONNECTIVITY_TIMEOUT_SECONDS) as resp:  # noqa: S310 - configured lawyer-side model URL
                 if 200 <= resp.status < 300:
                     status = "success"
                     message = "connectivity check succeeded"

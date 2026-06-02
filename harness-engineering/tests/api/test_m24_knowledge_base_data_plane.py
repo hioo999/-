@@ -155,6 +155,27 @@ class M24KnowledgeBaseStoreTest(unittest.TestCase):
             finally:
                 agent_server.STORAGE_DIR = original_storage_dir
 
+    def test_no_evidence_answer_history_preserves_missing_evidence_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = agent_server.Store(Path(tmp) / "agent.db")
+            kb = store.create_knowledge_base({"type": "private", "name": "空知识库"}, "u_admin")
+
+            answer = store.ask_knowledge_base(kb["id"], "库里是否有付款期限依据？", "u_admin")
+
+            self.assertTrue(answer["insufficient_evidence"])
+            self.assertEqual(answer["citations"], [])
+            self.assertIn("证据不足，不能下确定性法律结论", answer["answer"])
+            self.assertIn("无可用引用来源", answer["answer"])
+
+            history_messages = store.get_chat_messages(answer["session_id"], "u_admin")
+            history_answer = [item for item in history_messages if item["role"] == "assistant"][-1]
+            self.assertTrue(history_answer["insufficient_evidence"])
+            self.assertEqual(history_answer["citations"], [])
+            self.assertEqual(history_answer["has_citations"], 0)
+            self.assertIn("证据不足，不能下确定性法律结论", history_answer["content"])
+            self.assertIn("无可用引用来源", history_answer["content"])
+            self.assertIn("CHAT_ASKED_NO_CITATION", [row["action"] for row in store.audit_logs()])
+
     def test_knowledge_base_governance_metadata_controls_ai_usage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             original_storage_dir = agent_server.STORAGE_DIR
@@ -244,6 +265,10 @@ class M24KnowledgeBaseStoreTest(unittest.TestCase):
                 self.assertEqual(disabled["review_status"], "ai_disabled")
                 self.assertFalse(disabled["ai_enabled"])
                 self.assertEqual(disabled["ai_usage_policy"], "disabled")
+                self.assertEqual(store.search(kb["id"], "模板条款", user_id="u_admin"), [])
+                self.assertEqual(store.search(kb["id"], "模板条款", user_id="u_admin", generate=True), [])
+                with self.assertRaises(PermissionError):
+                    store.ask_knowledge_base(kb["id"], "模板条款是什么？", "u_admin")
 
                 review_logs = store.list_knowledge_base_review_logs(kb["id"], "u_admin")
                 self.assertEqual([item["action"] for item in review_logs], ["submit_review", "reject", "submit_review", "publish", "disable_ai"])
@@ -516,6 +541,38 @@ class M24KnowledgeBaseStoreTest(unittest.TestCase):
                 trash_tree = store.get_knowledge_base_tree(kb["id"], folder_denied_editor["id"], include_deleted=True)
                 self.assertNotIn(deleted_folder["id"], [item["id"] for item in trash_tree["folders"]])
                 self.assertNotIn(deleted_file["id"], [item["id"] for item in trash_tree["files"]])
+            finally:
+                agent_server.STORAGE_DIR = original_storage_dir
+
+    def test_ai_query_permission_denial_blocks_retrieval_and_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            original_storage_dir = agent_server.STORAGE_DIR
+            agent_server.STORAGE_DIR = Path(tmp) / "storage"
+            try:
+                store = agent_server.Store(Path(tmp) / "agent.db")
+                admin_id = "u_admin"
+                viewer = store.create_user({"account": "ai_denied", "name": "AI Denied", "role": "readonly", "password": "secret1"})
+                kb = store.create_knowledge_base({"type": "team", "name": "AI 权限隔离库", "review_status": "published", "ai_usage_policy": "allow_generation"}, admin_id)
+                store.grant_knowledge_base_member(kb["id"], {"principal_id": viewer["id"], "role_code": "viewer"}, admin_id)
+                content = base64.b64encode("AI 查询权限隔离测试材料，包含付款期限和违约责任。".encode("utf-8")).decode("ascii")
+                file = store.save_uploaded_file(None, "ai-query-acl.txt", content, kb["id"], None, admin_id)
+                store.parse_file(file["id"])
+
+                self.assertTrue(store.has_resource_access("knowledge_base", kb["id"], viewer["id"], "view"))
+                self.assertTrue(store.has_resource_access("file", file["id"], viewer["id"], "view"))
+                self.assertGreaterEqual(len(store.search(kb["id"], "付款期限 违约责任", user_id=viewer["id"])), 1)
+
+                store.set_acl_entry({"resource_type": "knowledge_base", "resource_id": kb["id"], "principal_id": viewer["id"], "action": "ai_query"}, admin_id, "deny")
+
+                self.assertTrue(store.has_resource_access("knowledge_base", kb["id"], viewer["id"], "view"))
+                self.assertFalse(store.has_resource_access("knowledge_base", kb["id"], viewer["id"], "ai_query"))
+                self.assertFalse(store.has_resource_access("file", file["id"], viewer["id"], "ai_query"))
+                effective = store.effective_permissions("knowledge_base", kb["id"], admin_id, viewer["id"])
+                self.assertTrue(effective["permissions"]["view"])
+                self.assertFalse(effective["permissions"]["ai_query"])
+                self.assertEqual(store.search(kb["id"], "付款期限 违约责任", user_id=viewer["id"]), [])
+                with self.assertRaises(PermissionError):
+                    store.ask_knowledge_base(kb["id"], "付款期限和违约责任是什么？", viewer["id"])
             finally:
                 agent_server.STORAGE_DIR = original_storage_dir
 

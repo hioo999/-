@@ -42,7 +42,7 @@ def request_json(base_url: str, method: str, path: str, payload: dict | None = N
 
 MODEL_PAYLOAD = {
     "provider": "openai-compatible",
-    "base_url": "https://llm.local/v1",
+    "base_url": "http://127.0.0.1:9/v1",
     "chat_model": "case-chat",
     "embedding_model": "case-embedding",
     "api_key": "sk-test-secret-1234567890",

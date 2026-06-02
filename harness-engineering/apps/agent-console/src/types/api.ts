@@ -360,6 +360,7 @@ export type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
   has_citations: number;
+  insufficient_evidence?: boolean;
   citations?: Citation[];
   created_at: number;
 };
