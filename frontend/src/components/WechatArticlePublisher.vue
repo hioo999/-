@@ -148,6 +148,56 @@ const articleGenerateDisabledReason = computed(() => {
   return ''
 })
 
+const taskTypeLabelMap: Record<string, string> = {
+  wechat_article_generate: '文章生成',
+  wechat_cover_generate: '封面生成',
+  wechat_slot_image_generate: '正文配图',
+  wechat_draft_send: '草稿发送',
+  image_generation: '图片生成',
+  text_generation: '内容生成',
+}
+
+const taskStatusLabelMap: Record<string, string> = {
+  pending: '排队中',
+  running: '生成中',
+  retrying: '重试中',
+  completed: '已完成',
+  success: '已完成',
+  failed: '待处理',
+  cancelled: '已取消',
+}
+
+const assetTypeLabelMap: Record<string, string> = {
+  image: '图片素材',
+  cover: '封面素材',
+  source_material: '选题素材',
+  platform_content: '内容素材',
+  wechat_draft: '公众号草稿',
+}
+
+function formatTaskType(value?: string) {
+  return taskTypeLabelMap[String(value || '')] || '内容生成'
+}
+
+function formatTaskStatus(value?: string) {
+  return taskStatusLabelMap[String(value || '')] || '处理中'
+}
+
+function formatAssetType(value?: string) {
+  return assetTypeLabelMap[String(value || '')] || '素材'
+}
+
+function formatDraftStatus(draft: WechatDraftRecord) {
+  if (draft.status === 'sent') return '已发送到公众号草稿箱'
+  if (draft.status === 'failed') return draft.errorMessage || '发送未完成'
+  if (draft.status === 'pending') return '等待发送'
+  return '草稿已保存'
+}
+
+function friendlyError(fallback: string) {
+  return `${fallback}，请稍后重试。`
+}
+
 watch(
   () => props.initialContent,
   (value) => {
@@ -338,7 +388,7 @@ async function openExistingContent(contentId = selectedExistingContentId.value) 
     feedback.value = { type: 'success', message: '已打开历史公众号文章。' }
     await Promise.all([handlePreview(), refreshTasksAndAssets(), loadGenerationRecords()])
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '打开历史文章失败' }
+    feedback.value = { type: 'error', message: friendlyError('打开历史文章失败') }
   }
 }
 
@@ -379,7 +429,7 @@ async function handleGenerateWechatArticle() {
     feedback.value = { type: 'success', message: res.message || '公众号文章已生成，已带入排版编辑区。' }
     await Promise.all([handlePreview(), refreshTasksAndAssets(), loadProjects(), loadProjectTopics(), loadRecentContents(), loadGenerationRecords()])
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '公众号文章生成失败' }
+    feedback.value = { type: 'error', message: friendlyError('公众号文章生成失败') }
   } finally {
     isArticleGenerating.value = false
   }
@@ -404,7 +454,7 @@ async function saveCurrentArticle() {
     feedback.value = { type: 'success', message: '公众号文章已保存到资产库。' }
     await refreshTasksAndAssets()
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '保存公众号文章失败' }
+    feedback.value = { type: 'error', message: friendlyError('保存公众号文章失败') }
   }
 }
 
@@ -479,7 +529,7 @@ async function generateSlotImage(slotIndex: number) {
     await Promise.all([handlePreview(), refreshTasksAndAssets()])
     if (res.data.task?.taskId && ['pending', 'running'].includes(res.data.task.status)) void pollTaskUntilSettled(res.data.task.taskId)
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail?.message || err?.response?.data?.detail || err.message || '正文图片生成失败' }
+    feedback.value = { type: 'error', message: friendlyError('正文图片生成失败') }
   } finally {
     activeSlotIndex.value = -1
   }
@@ -502,7 +552,7 @@ async function generateCoverImage() {
     await refreshTasksAndAssets()
     if (res.data.task?.taskId && ['pending', 'running'].includes(res.data.task.status)) void pollTaskUntilSettled(res.data.task.taskId)
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail?.message || err?.response?.data?.detail || err.message || '封面图生成失败' }
+    feedback.value = { type: 'error', message: friendlyError('封面图生成失败') }
   } finally {
     isCoverGenerating.value = false
   }
@@ -518,7 +568,7 @@ async function setCoverImageUrl() {
     coverUrl.value = res.data.coverUrl || imageUrl
     feedback.value = { type: 'success', message: res.message || '封面图已设置。' }
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '设置封面失败' }
+    feedback.value = { type: 'error', message: friendlyError('设置封面失败') }
   }
 }
 
@@ -542,7 +592,7 @@ async function uploadCoverFile(event: Event) {
     feedback.value = { type: 'success', message: '封面图已上传并设置，发送草稿时会上传到微信素材接口。' }
     await refreshTasksAndAssets()
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '上传封面失败' }
+    feedback.value = { type: 'error', message: friendlyError('上传封面失败') }
   } finally {
     input.value = ''
   }
@@ -550,7 +600,7 @@ async function uploadCoverFile(event: Event) {
 
 async function insertImageAtCursor() {
   if (!platformContentId.value) return
-  const imageUrl = window.prompt('请输入要插入到光标位置的公网图片 URL')?.trim()
+  const imageUrl = window.prompt('请输入要插入到光标位置的图片链接')?.trim()
   if (!imageUrl) return
   const textarea = markdownTextarea.value
   const start = textarea?.selectionStart ?? rawContent.value.length
@@ -575,7 +625,7 @@ async function insertImageAtCursor() {
 
 async function insertSlotImageUrl(slotIndex: number) {
   if (!platformContentId.value) return
-  const imageUrl = window.prompt('请输入公网可访问的图片 URL')?.trim()
+  const imageUrl = window.prompt('请输入可访问的图片链接')?.trim()
   if (!imageUrl) return
   activeSlotIndex.value = slotIndex
   try {
@@ -584,7 +634,7 @@ async function insertSlotImageUrl(slotIndex: number) {
     feedback.value = { type: 'success', message: res.message || '图片已插入正文。' }
     await Promise.all([handlePreview(), refreshTasksAndAssets()])
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '插入图片失败' }
+    feedback.value = { type: 'error', message: friendlyError('插入图片失败') }
   } finally {
     activeSlotIndex.value = -1
   }
@@ -599,7 +649,7 @@ async function removeSlotAsset(slotIndex: number) {
     feedback.value = { type: 'success', message: res.message || '图片位绑定已移除。' }
     await refreshTasksAndAssets()
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '移除图片绑定失败' }
+    feedback.value = { type: 'error', message: friendlyError('移除图片绑定失败') }
   } finally {
     activeSlotIndex.value = -1
   }
@@ -615,7 +665,7 @@ async function reuseAssetToArticle(asset: any) {
     feedback.value = { type: 'success', message: '图片已插入正文。' }
     await Promise.all([handlePreview(), refreshTasksAndAssets()])
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '插入图片失败' }
+    feedback.value = { type: 'error', message: friendlyError('插入图片失败') }
   } finally {
     activeAssetId.value = 0
   }
@@ -631,14 +681,14 @@ async function reuseAssetAsCover(asset: any) {
     feedback.value = { type: 'success', message: res.message || '资产已设置为封面图。' }
     await refreshTasksAndAssets()
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '设置封面失败' }
+    feedback.value = { type: 'error', message: friendlyError('设置封面失败') }
   } finally {
     activeAssetId.value = 0
   }
 }
 
 async function addImageAssetFromUrl() {
-  const imageUrl = window.prompt('请输入公网可访问的图片 URL')?.trim()
+  const imageUrl = window.prompt('请输入可访问的图片链接')?.trim()
   if (!imageUrl) return
   const titleText = window.prompt('请输入图片资产标题', '公众号图片资产')?.trim() || '公众号图片资产'
   try {
@@ -657,7 +707,7 @@ async function addImageAssetFromUrl() {
     feedback.value = { type: 'success', message: res.message || '图片资产已添加。' }
     await refreshTasksAndAssets()
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '添加图片资产失败' }
+    feedback.value = { type: 'error', message: friendlyError('添加图片失败') }
   }
 }
 
@@ -669,7 +719,7 @@ async function removeUnifiedAsset(asset: any) {
     feedback.value = { type: 'success', message: '资产已删除。' }
     await refreshTasksAndAssets()
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '删除资产失败' }
+    feedback.value = { type: 'error', message: friendlyError('删除素材失败') }
   } finally {
     activeAssetId.value = 0
   }
@@ -684,7 +734,7 @@ async function retryTask(task: any) {
     feedback.value = { type: res.code === 1 ? 'error' : 'success', message: res.message || '任务已重试。' }
     await Promise.all([refreshTasksAndAssets(), task.taskType === 'wechat_draft_send' || res.data?.draftId ? refreshDrafts() : Promise.resolve()])
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '任务重试失败' }
+    feedback.value = { type: 'error', message: friendlyError('重试失败') }
   } finally {
     activeTaskId.value = 0
   }
@@ -697,7 +747,7 @@ async function refreshAccounts() {
     const defaultAccount = accounts.value.find((item) => item.isDefault) || accounts.value[0]
     if (defaultAccount && !selectedAccountId.value) selectedAccountId.value = defaultAccount.accountId
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '公众号账号加载失败' }
+    feedback.value = { type: 'error', message: friendlyError('公众号账号加载失败') }
   }
 }
 
@@ -743,7 +793,7 @@ function resetAccountForm() {
 
 async function saveAccount() {
   if (!isAdminUser.value) {
-    feedback.value = { type: 'error', message: '第一版公众号账号由管理员统一配置，请联系管理员。' }
+    feedback.value = { type: 'error', message: '公众号账号由管理员统一配置，请联系管理员。' }
     return
   }
   if (!accountForm.name.trim() || !accountForm.appId.trim()) {
@@ -765,7 +815,7 @@ async function saveAccount() {
     resetAccountForm()
     await refreshAccounts()
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '公众号账号保存失败' }
+    feedback.value = { type: 'error', message: friendlyError('公众号账号保存失败') }
   } finally {
     isLoading.value = false
   }
@@ -780,13 +830,13 @@ async function removeAccount(account: WechatAccount) {
     await refreshAccounts()
     feedback.value = { type: 'success', message: '公众号账号已删除' }
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '删除失败' }
+    feedback.value = { type: 'error', message: friendlyError('删除失败') }
   }
 }
 
 async function testSelectedAccount(accountId = selectedAccountId.value) {
   if (!isAdminUser.value) {
-    feedback.value = { type: 'error', message: '第一版公众号连接测试由管理员执行。' }
+    feedback.value = { type: 'error', message: '公众号连接测试由管理员执行。' }
     return
   }
   if (!accountId) return
@@ -796,7 +846,7 @@ async function testSelectedAccount(accountId = selectedAccountId.value) {
     feedback.value = { type: res.code === 0 ? 'success' : 'error', message: res.message }
     await refreshAccounts()
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '测试连接失败' }
+    feedback.value = { type: 'error', message: friendlyError('测试连接失败') }
   } finally {
     isLoading.value = false
   }
@@ -813,7 +863,7 @@ async function loadThemes() {
     themes.value = res.data.themes || []
     feedback.value = { type: 'success', message: themes.value.length ? `已查询到 ${themes.value.length} 个主题` : '该账号暂无已保存主题' }
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '主题查询失败' }
+    feedback.value = { type: 'error', message: friendlyError('主题查询失败') }
   } finally {
     isLoading.value = false
   }
@@ -837,7 +887,7 @@ async function handlePreview() {
     feedback.value = { type: 'success', message: '排版预览已更新' }
     if (platformContentId.value) await saveCurrentArticle()
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '排版预览失败' }
+    feedback.value = { type: 'error', message: friendlyError('排版预览失败') }
   } finally {
     isLoading.value = false
   }
@@ -861,7 +911,7 @@ async function runPreflight(showSuccess = true) {
     }
     return res.data
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '发送前检查失败' }
+    feedback.value = { type: 'error', message: friendlyError('发送前检查失败') }
     return null
   }
 }
@@ -899,10 +949,10 @@ async function handleSendDraft() {
       return
     }
     formattedHtml.value = res.data.formattedHtml || formattedHtml.value
-    feedback.value = { type: 'success', message: `已发送到公众号草稿箱，media_id：${res.data.wechatMediaId}` }
+    feedback.value = { type: 'success', message: '已发送到公众号草稿箱，可前往公众号后台查看。' }
     await refreshDrafts()
   } catch (err: any) {
-    feedback.value = { type: 'error', message: err?.response?.data?.detail || err.message || '发送草稿失败' }
+    feedback.value = { type: 'error', message: friendlyError('发送草稿失败') }
   } finally {
     isSending.value = false
   }
@@ -915,6 +965,51 @@ async function copyText(text: string, label: string) {
   } catch {
     feedback.value = { type: 'error', message: '浏览器禁止访问剪贴板，请手动复制' }
   }
+}
+
+function setEditorSelection(start: number, end = start) {
+  window.setTimeout(() => {
+    const textarea = markdownTextarea.value
+    textarea?.focus()
+    textarea?.setSelectionRange(start, end)
+  }, 0)
+}
+
+function insertEditorText(text: string, cursorOffset = text.length, selectLength = 0) {
+  const textarea = markdownTextarea.value
+  const start = textarea?.selectionStart ?? rawContent.value.length
+  const end = textarea?.selectionEnd ?? start
+  rawContent.value = `${rawContent.value.slice(0, start)}${text}${rawContent.value.slice(end)}`
+  const cursor = start + cursorOffset
+  setEditorSelection(cursor, cursor + selectLength)
+}
+
+function wrapEditorSelection(prefix: string, suffix: string, placeholder: string) {
+  const textarea = markdownTextarea.value
+  const start = textarea?.selectionStart ?? rawContent.value.length
+  const end = textarea?.selectionEnd ?? start
+  const selected = rawContent.value.slice(start, end) || placeholder
+  const insertion = `${prefix}${selected}${suffix}`
+  rawContent.value = `${rawContent.value.slice(0, start)}${insertion}${rawContent.value.slice(end)}`
+  setEditorSelection(start + prefix.length, start + prefix.length + selected.length)
+}
+
+type EditorBlockKind = 'h2' | 'h3' | 'quote' | 'golden' | 'focus' | 'divider' | 'follow' | 'recommend'
+
+function insertEditorBlock(kind: EditorBlockKind) {
+  const blocks: Record<EditorBlockKind, string> = {
+    h2: '\n\n## 小标题\n\n',
+    h3: '\n\n### 小节标题\n\n',
+    quote: '\n\n> 这里填写引用、案例或补充说明。\n\n',
+    golden: '\n\n> ==这里填写金句，突出文章核心观点。==\n\n',
+    focus: '\n\n==这里填写重点段落或关键结论。==\n\n',
+    divider: '\n\n---\n\n',
+    follow: '\n\n---\n\n如果这篇内容对你有帮助，欢迎关注我，持续分享更多实用方法。\n\n',
+    recommend: '\n\n## 推荐阅读\n\n- [相关阅读标题](https://example.com)\n\n',
+  }
+  const insertion = blocks[kind]
+  const placeholderStart = insertion.search(/小标题|小节标题|这里填写|相关阅读标题/)
+  insertEditorText(insertion, placeholderStart >= 0 ? placeholderStart : insertion.length, placeholderStart >= 0 ? insertion.match(/小标题|小节标题|这里填写[^。\n]*|相关阅读标题/)?.[0]?.length || 0 : 0)
 }
 </script>
 
@@ -944,7 +1039,7 @@ async function copyText(text: string, label: string) {
           <h3>公众号内容工作台</h3>
           <p>先创建项目和选题，再通过链接、原文或主题生成结构化公众号文章，生成结果会自动进入下方排版编辑区。</p>
         </div>
-        <button class="btn btn-ghost btn-sm" :disabled="isArticleGenerating" @click="loadWorkspaceData">刷新底座数据</button>
+        <button class="btn btn-ghost btn-sm" :disabled="isArticleGenerating" @click="loadWorkspaceData">刷新项目数据</button>
       </div>
 
       <div class="workbench-grid">
@@ -989,15 +1084,15 @@ async function copyText(text: string, label: string) {
               <option v-for="template in promptTemplates" :key="template.id" :value="template.id">{{ template.name }} · {{ template.version }}</option>
             </select>
           </label>
-          <label>文本模型
+          <label>文案生成方式
             <select v-model.number="selectedTextModelId" class="select wide">
-              <option :value="0">使用系统默认文本模型</option>
+              <option :value="0">推荐设置</option>
               <option v-for="model in textModels" :key="model.id" :value="model.id || 0">{{ model.name }} · {{ model.provider }}</option>
             </select>
           </label>
-          <label>图片模型
+          <label>图片生成方式
             <select v-model.number="selectedImageModelId" class="select wide">
-              <option :value="0">使用系统默认图片模型</option>
+              <option :value="0">推荐设置</option>
               <option v-for="model in imageModels" :key="model.id" :value="model.id || 0">{{ model.name }} · {{ model.provider }}</option>
             </select>
           </label>
@@ -1033,7 +1128,7 @@ async function copyText(text: string, label: string) {
           <p v-if="!unifiedTasks.length">暂无生成进度。</p>
           <ul v-else>
             <li v-for="task in unifiedTasks.slice(0, 4)" :key="task.taskId" class="inline-list-item">
-              <span>{{ task.taskType }} · {{ task.status === 'failed' ? '待处理' : task.status }}</span>
+              <span>{{ formatTaskType(task.taskType) }} · {{ formatTaskStatus(task.status) }}</span>
               <button v-if="task.status === 'failed'" class="mini-link" :disabled="activeTaskId === task.taskId" @click="retryTask(task)">重试</button>
             </li>
           </ul>
@@ -1053,12 +1148,12 @@ async function copyText(text: string, label: string) {
         <div>
           <div class="list-headline">
             <strong>最近资产</strong>
-            <button class="mini-link" @click="addImageAssetFromUrl">添加图片URL</button>
+            <button class="mini-link" @click="addImageAssetFromUrl">添加图片链接</button>
           </div>
           <p v-if="!unifiedAssets.length">暂无资产记录。</p>
           <ul v-else>
             <li v-for="asset in unifiedAssets.slice(0, 4)" :key="asset.assetId" class="inline-list-item">
-              <span>{{ asset.assetType }} · {{ asset.title || asset.url || '未命名资产' }}</span>
+              <span>{{ formatAssetType(asset.assetType) }} · {{ asset.title || '未命名素材' }}</span>
               <button v-if="asset.assetType === 'image' && platformContentId && generatedArticle?.imageSlots?.length" class="mini-link" :disabled="activeAssetId === asset.assetId" @click="reuseAssetToArticle(asset)">插入正文</button>
               <button v-if="asset.assetType === 'image' && platformContentId" class="mini-link" :disabled="activeAssetId === asset.assetId" @click="reuseAssetAsCover(asset)">设封面</button>
               <button class="mini-link danger" :disabled="activeAssetId === asset.assetId" @click="removeUnifiedAsset(asset)">删除</button>
@@ -1080,11 +1175,11 @@ async function copyText(text: string, label: string) {
               <strong>{{ slot.purpose || `正文插图 ${index + 1}` }}</strong>
               <span>{{ slot.position || '未指定位置' }} · {{ slot.status || '待生成' }}</span>
               <p>{{ slot.prompt || '暂无提示词' }}</p>
-              <a v-if="slot.imageUrl" :href="slot.imageUrl" target="_blank" rel="noreferrer">{{ slot.imageUrl }}</a>
+              <a v-if="slot.imageUrl" :href="slot.imageUrl" target="_blank" rel="noreferrer">查看图片</a>
             </div>
             <div class="slot-actions">
               <button class="btn btn-ghost btn-sm" :disabled="activeSlotIndex === index" @click="generateSlotImage(index)">生成图片</button>
-              <button class="btn btn-ghost btn-sm" :disabled="activeSlotIndex === index" @click="insertSlotImageUrl(index)">插入URL</button>
+              <button class="btn btn-ghost btn-sm" :disabled="activeSlotIndex === index" @click="insertSlotImageUrl(index)">插入图片链接</button>
               <button class="btn btn-ghost btn-sm" :disabled="activeSlotIndex === index || !slot.imageUrl" @click="removeSlotAsset(index)">移除绑定</button>
             </div>
           </article>
@@ -1094,12 +1189,12 @@ async function copyText(text: string, label: string) {
 
     <section v-if="preflightResult" class="preflight-panel" :class="{ pass: preflightResult.canSend }">
       <div>
-        <strong>{{ preflightResult.canSend ? '发送前检查通过' : '发送前检查需处理' }}</strong>
+          <strong>{{ preflightResult.canSend ? '发送前检查通过' : '发送前检查需处理' }}</strong>
         <span>正文图片 {{ preflightResult.imageCount }} 张，封面：{{ preflightResult.selectedCoverUrl || '未识别' }}</span>
       </div>
       <ul v-if="preflightResult.issues.length">
         <li v-for="issue in preflightResult.issues" :key="issue.code + issue.message" :class="issue.level">
-          <strong>{{ issue.level === 'error' ? '错误' : '提醒' }}：{{ issue.message }}</strong>
+          <strong>{{ issue.level === 'error' ? '需要处理' : '提醒' }}：{{ issue.message }}</strong>
           <span>{{ issue.suggestion }}</span>
         </li>
       </ul>
@@ -1122,17 +1217,31 @@ async function copyText(text: string, label: string) {
           <label>原文链接<input v-model="contentSourceUrl" class="input" placeholder="可选" /></label>
         </div>
         <label>摘要<textarea v-model="digest" class="input textarea compact" placeholder="可选，建议 60-120 字"></textarea></label>
-        <label>封面图 URL<input v-model="coverUrl" class="input" placeholder="公网 JPG/PNG URL；不填则使用正文第一张图或账号默认封面" /></label>
+        <label>封面图链接<input v-model="coverUrl" class="input" placeholder="粘贴可访问的图片链接；不填则使用正文第一张图或账号默认封面" /></label>
         <div class="action-row compact-actions">
           <button class="btn btn-ghost btn-sm" :disabled="!platformContentId || isCoverGenerating" @click="generateCoverImage">{{ isCoverGenerating ? '生成中...' : '生成封面图' }}</button>
-          <button class="btn btn-ghost btn-sm" :disabled="!platformContentId" @click="setCoverImageUrl">设置封面URL</button>
+          <button class="btn btn-ghost btn-sm" :disabled="!platformContentId" @click="setCoverImageUrl">使用图片链接作为封面</button>
           <label class="btn btn-ghost btn-sm upload-btn" :class="{ disabled: !platformContentId }">
             上传封面
             <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" :disabled="!platformContentId" @change="uploadCoverFile" />
           </label>
           <span v-if="generatedArticle?.coverAssetId" class="article-status">封面资产 #{{ generatedArticle.coverAssetId }}</span>
         </div>
-        <label>文章正文<textarea ref="markdownTextarea" v-model="rawContent" class="input textarea markdown-input"></textarea></label>
+        <label>文章正文</label>
+        <div class="wechat-editor-toolbar" aria-label="公众号排版工具栏">
+          <button class="toolbar-chip" type="button" @click="insertEditorBlock('h2')">二级标题</button>
+          <button class="toolbar-chip" type="button" @click="insertEditorBlock('h3')">小标题</button>
+          <button class="toolbar-chip" type="button" @click="wrapEditorSelection('**', '**', '重点文字')">加粗</button>
+          <button class="toolbar-chip" type="button" @click="wrapEditorSelection('==', '==', '高亮重点')">高亮</button>
+          <button class="toolbar-chip" type="button" @click="insertEditorBlock('quote')">引用卡片</button>
+          <button class="toolbar-chip" type="button" @click="insertEditorBlock('golden')">金句卡</button>
+          <button class="toolbar-chip" type="button" @click="insertEditorBlock('focus')">重点段落</button>
+          <button class="toolbar-chip" type="button" @click="insertEditorBlock('divider')">分割线</button>
+          <button class="toolbar-chip" type="button" @click="insertEditorBlock('follow')">关注引导</button>
+          <button class="toolbar-chip" type="button" @click="insertEditorBlock('recommend')">推荐阅读</button>
+        </div>
+        <textarea ref="markdownTextarea" v-model="rawContent" class="input textarea markdown-input" aria-label="文章正文"></textarea>
+        <p class="editor-helper">工具栏会插入公众号兼容 Markdown，点击“更新预览”后转换为内联样式 HTML，发送草稿时仍由后端清洗过滤。</p>
         <div class="action-row">
           <button class="btn btn-ghost" @click="copyText(rawContent, '正文')">复制正文</button>
           <button class="btn btn-ghost" :disabled="!formattedHtml" @click="copyText(formattedHtml, '排版结果')">复制排版结果</button>
@@ -1163,7 +1272,7 @@ async function copyText(text: string, label: string) {
           <div class="card-head">
             <div>
               <h3>公众号账号</h3>
-              <p>{{ isAdminUser ? '管理员配置公众号账号；AppSecret 加密存储，前端只显示掩码。' : '普通用户只能选择管理员已启用和授权的公众号账号。' }}</p>
+              <p>{{ isAdminUser ? '管理可用公众号账号和发布设置。' : '请选择可用的公众号账号，发布前系统会自动完成必要检查。' }}</p>
             </div>
             <button v-if="isAdminUser" class="btn btn-ghost btn-sm" @click="resetAccountForm">新建</button>
           </div>
@@ -1203,7 +1312,7 @@ async function copyText(text: string, label: string) {
               <button class="btn btn-primary" :disabled="isLoading" @click="saveAccount">保存账号</button>
             </div>
           </div>
-          <p v-else class="admin-only-note">账号新增、密钥更新和测试连接由管理员在后台完成，避免普通用户接触 AppSecret。</p>
+          <p v-else class="admin-only-note">公众号账号由运营人员统一维护，当前页面仅用于选择账号和发送草稿。</p>
         </section>
 
         <section class="wechat-card history-card">
@@ -1217,7 +1326,7 @@ async function copyText(text: string, label: string) {
           <div v-if="drafts.length" class="draft-list">
             <article v-for="draft in drafts" :key="draft.draftId" :class="draft.status">
               <strong>{{ draft.title }}</strong>
-              <span>{{ draft.status === 'sent' ? `已发送：${draft.wechatMediaId}` : draft.errorMessage || draft.status }}</span>
+              <span>{{ formatDraftStatus(draft) }}</span>
             </article>
           </div>
           <p v-else class="empty-history">暂无公众号草稿记录。</p>
@@ -1501,6 +1610,39 @@ label {
   min-height: 420px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   line-height: 1.7;
+}
+
+.wechat-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.06), rgba(248, 250, 252, 0.95));
+  padding: 10px;
+}
+
+.toolbar-chip {
+  min-height: 30px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 999px;
+  background: #fff;
+  color: #1e40af;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 0 10px;
+}
+
+.toolbar-chip:hover {
+  border-color: rgba(37, 99, 235, 0.32);
+  background: #eff6ff;
+}
+
+.editor-helper {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .btn {

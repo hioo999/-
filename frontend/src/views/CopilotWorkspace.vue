@@ -51,6 +51,12 @@ import {
   type VideoAipStepTask,
 } from '../api/videoAip.api'
 import {
+  listIpProjects,
+  listProjectTopics,
+  type ContentTopicData,
+  type IpProjectData,
+} from '../api/platformContent.api'
+import {
   createPromptTemplate,
   createPromptTemplateCategory,
   deletePromptTemplate,
@@ -65,6 +71,8 @@ import {
   type PromptTemplateData,
   type PromptTemplateVersionData,
 } from '../api/promptTemplates.api'
+import { createUnifiedAsset, listUnifiedAssets } from '../api/assets.api'
+import { hashPromptContent } from '../utils/promptText'
 import {
   createModelConfig,
   createModelGateway,
@@ -140,6 +148,7 @@ const promptManagerCategoryKey = ref('')
 const promptManagerFeedback = ref<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
 const isSavingPromptCategory = ref(false)
 const isSavingPromptTemplate = ref(false)
+const isSavingPromptAsset = ref(false)
 const isSavingModelConfig = ref(false)
 const isSavingModelGateway = ref(false)
 const modelGatewayFeedback = ref<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
@@ -147,6 +156,11 @@ const modelGatewayBusy = reactive<Record<number, boolean>>({})
 const editingPromptCategoryKey = ref('')
 const editingPromptTemplateId = ref(0)
 const promptTemplateVersions = ref<PromptTemplateVersionData[]>([])
+const promptAssetProjects = ref<IpProjectData[]>([])
+const promptAssetTopics = ref<ContentTopicData[]>([])
+const promptAssetProjectId = ref(0)
+const promptAssetTopicId = ref(0)
+const savedPromptHashes = ref<string[]>([])
 
 const promptCategoryForm = reactive<PromptTemplateCategoryData>({
   key: '',
@@ -570,6 +584,44 @@ async function loadModelDefaults() {
   }
 }
 
+async function loadPromptAssetProjects() {
+  try {
+    const res = await listIpProjects()
+    promptAssetProjects.value = res.data.items || []
+  } catch {
+    promptAssetProjects.value = []
+  }
+}
+
+async function loadPromptAssetTopics() {
+  if (!promptAssetProjectId.value) {
+    promptAssetTopics.value = []
+    promptAssetTopicId.value = 0
+    return
+  }
+  try {
+    const res = await listProjectTopics(promptAssetProjectId.value)
+    promptAssetTopics.value = res.data.items || []
+    if (!promptAssetTopics.value.some((topic) => topic.topicId === promptAssetTopicId.value)) {
+      promptAssetTopicId.value = 0
+    }
+  } catch {
+    promptAssetTopics.value = []
+    promptAssetTopicId.value = 0
+  }
+}
+
+async function refreshSavedPromptHashes() {
+  try {
+    const res = await listUnifiedAssets({ sourceType: 'prompt_tool', limit: 100 })
+    savedPromptHashes.value = (res.data?.items || [])
+      .map((asset: any) => String(asset.metadata?.promptHash || ''))
+      .filter(Boolean)
+  } catch {
+    savedPromptHashes.value = []
+  }
+}
+
 async function loadPromptManagerTemplates() {
   try {
     const res = await listPromptTemplates(promptManagerCategoryKey.value)
@@ -579,17 +631,24 @@ async function loadPromptManagerTemplates() {
   }
 }
 
+function loadAdminWorkspaceData() {
+  if (!isAdminUser.value) return
+  loadPromptManagerTemplates()
+  loadModelManagerConfigs()
+  loadModelGateways()
+  loadModelDefaults()
+  loadPromptAssetProjects()
+  refreshSavedPromptHashes()
+}
+
 loadPromptTemplateCategories()
 loadPromptTemplates()
-loadPromptManagerTemplates()
 loadGenerationSidecarData()
-loadModelManagerConfigs()
-loadModelGateways()
-loadModelDefaults()
 watch(selectedPromptCategory, () => loadPromptTemplates())
+watch(promptAssetProjectId, () => loadPromptAssetTopics())
 watch(promptManagerCategoryKey, () => {
   resetPromptTemplateForm()
-  loadPromptManagerTemplates()
+  if (isAdminUser.value) loadPromptManagerTemplates()
 })
 watch(selectedColumnId, () => {
   const column = selectedColumn.value
@@ -1516,9 +1575,21 @@ function applyVideoAipStep(step: { key?: string; step_key?: string; prompt: stri
   addChatMessage('system', `已应用「${step.title}」到视频提示词版块。`)
 }
 
+function buildVideoAipPromptPackage() {
+  const steps = videoAipDisplaySteps.value.filter((step) => String(step.prompt || '').trim())
+  if (!steps.length) return ''
+  return steps.map((step, idx) => [
+    `## ${idx + 1}. ${step.title || step.displayKey || '视频 AIP 步骤'}`,
+    step.goal ? `目标：${step.goal}` : '',
+    '',
+    String(step.prompt || '').trim(),
+  ].filter((line) => line !== '').join('\n')).join('\n\n')
+}
+
 function copyVideoAipPlan() {
-  if (!videoAipPlan.value) return
-  copyToClipboard(videoAipPlan.value.steps.map((step: any) => `## ${step.title}\n目标：${step.goal}\n\n${step.prompt}`).join('\n\n'))
+  const content = buildVideoAipPromptPackage()
+  if (!content) return
+  copyToClipboard(content)
 }
 
 function safeFilename(value: string) {
@@ -1572,7 +1643,7 @@ function exportCurrentContentMarkdown() {
   const title = activeTabLabelMap[activeTab.value]
   const date = new Date().toISOString().slice(0, 10)
   downloadTextFile(`${date}-${safeFilename(title)}-导出.md`, buildContentMarkdown(title, currentContent.value))
-  addChatMessage('system', `${title} 已导出为 Markdown 文件。`)
+  addChatMessage('system', `${title} 已导出为文件。`)
 }
 
 function buildShortVideoArchiveMarkdown() {
@@ -1655,7 +1726,7 @@ function exportShortVideoWorkflowMarkdown() {
   const subject = shortVideoForm.subject_name || strategyOutputs.shortVideoWorkflow?.intent.label || '短视频工作流'
   const date = new Date().toISOString().slice(0, 10)
   downloadTextFile(`${date}-${safeFilename(subject)}-短视频工作流归档.md`, markdown)
-  addChatMessage('system', '📦 短视频工作流归档已导出为 Markdown 文件')
+  addChatMessage('system', '短视频工作流归档已导出为文件')
 }
 
 async function saveShortVideoWorkflowProject() {
@@ -1815,6 +1886,98 @@ function copyToClipboard(text: string) {
     .catch(() => addChatMessage('system', '复制失败：浏览器禁止访问剪贴板，请手动选中文本复制。'))
 }
 
+async function savePromptToMaterial(title: string, prompt: string, metadata: Record<string, any> = {}) {
+  if (isSavingPromptAsset.value) return
+  isSavingPromptAsset.value = true
+  try {
+    const result = await createPromptMaterialAsset(title, prompt, metadata)
+    if (result.status === 'empty') {
+      addChatMessage('system', '当前提示词为空，无法保存到素材库。')
+      return
+    }
+    if (result.status === 'duplicate') {
+      addChatMessage('system', `素材库已存在「${title}」，无需重复保存。可在生产中心资产库筛选“提示词素材”查看。`)
+      return
+    }
+    addChatMessage('assistant', `✅ 已保存「${title}」到${getPromptAssetScopeLabel()}素材库：${result.assetLabel}`)
+  } catch (err: any) {
+    addChatMessage('assistant', `❌ 保存提示词到素材库失败：${err?.response?.data?.detail || err.message}`)
+  } finally {
+    isSavingPromptAsset.value = false
+  }
+}
+
+async function createPromptMaterialAsset(title: string, prompt: string, metadata: Record<string, any> = {}) {
+  const content = prompt.trim()
+  if (!content) return { status: 'empty' as const }
+
+  const role = String(metadata.role || contentTypeMap[activeTab.value] || 'prompt')
+  const promptHash = hashPromptContent(`${role}:${metadata.stepKey || ''}:${content}`)
+  if (savedPromptHashes.value.includes(promptHash)) return { status: 'duplicate' as const, promptHash }
+
+  const res = await createUnifiedAsset({
+    assetType: 'source_material',
+    sourceType: 'prompt_tool',
+    title: title.trim() || '提示词素材',
+    projectId: promptAssetProjectId.value || undefined,
+    topicId: promptAssetTopicId.value || undefined,
+    metadata: {
+      source: 'copilot_prompt_result',
+      prompt: content,
+      contentType: contentTypeMap[activeTab.value],
+      promptHash,
+      ...metadata,
+    },
+    tags: ['prompt', 'source-material', role].filter(Boolean),
+  })
+  savedPromptHashes.value = [...savedPromptHashes.value, promptHash]
+  const assetLabel = `${res.data?.assetId ? `#${res.data.assetId} ` : ''}${res.data?.title || title}`
+  return { status: 'created' as const, assetLabel, promptHash }
+}
+
+function getPromptAssetScopeLabel() {
+  if (promptAssetTopicId.value) return '当前选题'
+  if (promptAssetProjectId.value) return '当前项目'
+  return '个人'
+}
+
+async function saveAllVideoAipPromptsToMaterial() {
+  if (isSavingPromptAsset.value) return
+  const steps = videoAipDisplaySteps.value.filter((step) => String(step.prompt || '').trim())
+  if (!steps.length) {
+    addChatMessage('system', '当前视频 AIP 链路还没有可保存的步骤提示词。')
+    return
+  }
+
+  isSavingPromptAsset.value = true
+  let created = 0
+  let duplicated = 0
+  try {
+    const packageResult = await createPromptMaterialAsset('视频 AIP 提示词总包', buildVideoAipPromptPackage(), {
+      role: 'video_aip_prompt_package',
+      stepCount: steps.length,
+    })
+    if (packageResult.status === 'created') created += 1
+    if (packageResult.status === 'duplicate') duplicated += 1
+
+    for (const step of steps) {
+      const result = await createPromptMaterialAsset(step.title || '视频 AIP 步骤提示词', String(step.prompt || ''), {
+        role: 'video_aip_step',
+        stepKey: step.displayKey,
+        goal: step.goal || '',
+      })
+      if (result.status === 'created') created += 1
+      if (result.status === 'duplicate') duplicated += 1
+    }
+
+    addChatMessage('assistant', `✅ 视频 AIP 提示词已批量沉淀到${getPromptAssetScopeLabel()}素材库：新增 ${created} 个，跳过重复 ${duplicated} 个。`)
+  } catch (err: any) {
+    addChatMessage('assistant', `❌ 批量保存提示词失败：${err?.response?.data?.detail || err.message}`)
+  } finally {
+    isSavingPromptAsset.value = false
+  }
+}
+
 // ─── 反转剧编剧 State ───────────────────────────────────────
 
 type WorkspaceMode = 'home' | ToolKey
@@ -1857,7 +2020,8 @@ const emit = defineEmits<{
 const REVERSAL_HISTORY_KEY = 'ip-case-reversal-drama-history'
 const router = useRouter()
 const isGuestUser = computed(() => props.currentUser?.isGuest === true && !props.currentUser?.token)
-const isAdminUser = computed(() => props.currentUser?.is_admin === true || (Boolean(props.currentUser?.token) && props.currentUser?.is_admin !== false))
+const isAdminUser = computed(() => props.currentUser?.is_admin === true)
+loadAdminWorkspaceData()
 
 const workspaceMode = ref<WorkspaceMode>('home')
 const liveStatusMessage = computed(() => {
@@ -1935,12 +2099,18 @@ const workspaceHashMap: Record<ToolKey, string> = {
   prompts: 'prompts',
 }
 
-const modeFromHash = (hash = window.location.hash): WorkspaceMode => {
+function normalizeWorkspaceMode(mode?: WorkspaceMode): WorkspaceMode {
   if (isGuestUser.value) return 'teleprompter'
+  if ((mode === 'models' || mode === 'prompts') && !isAdminUser.value) return 'home'
+  return mode || 'home'
+}
+
+const modeFromHash = (hash = window.location.hash): WorkspaceMode => {
   const value = hash.replace(/^#\/?/, '')
-  if (value === 'prompts' && !isAdminUser.value) return 'home'
-  if (value === 'ip' || value === 'sprint1' || value === 'platform' || value === 'reversal' || value === 'teleprompter' || value === 'wechat' || value === 'models' || value === 'prompts') return value
-  return props.initialMode || 'home'
+  if (value === 'ip' || value === 'sprint1' || value === 'platform' || value === 'reversal' || value === 'teleprompter' || value === 'wechat' || value === 'models' || value === 'prompts') {
+    return normalizeWorkspaceMode(value)
+  }
+  return normalizeWorkspaceMode(props.initialMode)
 }
 
 workspaceMode.value = modeFromHash()
@@ -1951,8 +2121,9 @@ function selectWorkspaceMode(mode: WorkspaceMode) {
     if (window.location.hash !== '#/teleprompter') window.location.hash = '#/teleprompter'
     return
   }
-  if (mode === 'prompts' && !isAdminUser.value) {
+  if ((mode === 'models' || mode === 'prompts') && !isAdminUser.value) {
     workspaceMode.value = 'home'
+    if (router.currentRoute.value.path !== modePathMap.home) router.replace(modePathMap.home)
     if (window.location.hash) history.pushState(null, '', window.location.pathname + window.location.search)
     return
   }
@@ -1984,23 +2155,27 @@ watch(
   () => props.initialMode,
   (mode) => {
     if (!mode || isGuestUser.value) return
-    if (mode === 'prompts' && !isAdminUser.value) {
+    if ((mode === 'models' || mode === 'prompts') && !isAdminUser.value) {
       workspaceMode.value = 'home'
+      if (router.currentRoute.value.path !== modePathMap.home) router.replace(modePathMap.home)
       return
     }
     workspaceMode.value = mode
-  }
+  },
+  { immediate: true }
 )
 
 watch(
   () => props.currentUser?.is_admin,
   () => {
-    if (workspaceMode.value === 'prompts' && !isAdminUser.value) {
+    if (isAdminUser.value) loadAdminWorkspaceData()
+    if ((workspaceMode.value === 'models' || workspaceMode.value === 'prompts') && !isAdminUser.value) {
       selectWorkspaceMode('home')
       return
     }
-    if (window.location.hash.replace(/^#\/?/, '') === 'prompts' && isAdminUser.value) {
-      workspaceMode.value = 'prompts'
+    const hashMode = window.location.hash.replace(/^#\/?/, '')
+    if ((hashMode === 'models' || hashMode === 'prompts') && isAdminUser.value) {
+      workspaceMode.value = hashMode
     }
   }
 )
@@ -2230,8 +2405,8 @@ async function handleGenerateDrama() {
 
   isGeneratingDrama.value = true
   dramaResult.value = null
-  dramaFeedback.value = { type: 'info', message: '反转剧编剧智能体正在创作中，预计 15-30 秒。请不要重复点击。' }
-  addChatMessage('assistant', '🎬 反转剧编剧智能体正在创作中，预计 15-30 秒...')
+  dramaFeedback.value = { type: 'info', message: '反转剧脚本正在创作中，预计 15-30 秒。请不要重复点击。' }
+  addChatMessage('assistant', '反转剧脚本正在创作中，预计 15-30 秒...')
 
   const customChars = drama.useCustomCharacters
     ? dramaCharacters.filter((c) => c.name && c.name.trim())
@@ -2269,9 +2444,8 @@ async function handleGenerateDrama() {
       `🎉 剧本已生成！自检通过 ${passed}/${total} 项。\n标题：《${res.data.overview.title || '未命名'}》\n你可以在右侧的对话框告诉我「第3镜画面再夸张点」「反转改成 B 套路」等指令进一步打磨。`
     )
   } catch (err: any) {
-    const message = err?.response?.data?.detail || err.message || '未知错误'
-    dramaFeedback.value = { type: 'error', message: `反转剧生成失败：${message}` }
-    addChatMessage('assistant', `❌ 反转剧生成失败：${message}`)
+    dramaFeedback.value = { type: 'error', message: '反转剧生成失败，请稍后重试或调整输入内容。' }
+    addChatMessage('assistant', '反转剧生成失败，请稍后重试或调整输入内容。')
   } finally {
     isGeneratingDrama.value = false
   }
@@ -3273,7 +3447,9 @@ function copyDramaMarkdown() {
               </div>
               <div v-if="videoAipPlan || videoPrompts" class="content-actions">
                 <button v-if="videoAipPlan" class="btn btn-ghost btn-sm" @click.stop="copyVideoAipPlan">复制 AIP 全链路</button>
+                <button v-if="videoAipDisplaySteps.length" class="btn btn-ghost btn-sm" :disabled="isSavingPromptAsset" @click.stop="saveAllVideoAipPromptsToMaterial">保存全部提示词</button>
                 <button v-if="videoPrompts" class="btn btn-ghost btn-sm" @click.stop="copyToClipboard(videoPrompts)">复制当前视频提示词</button>
+                <button v-if="videoPrompts" class="btn btn-ghost btn-sm" :disabled="isSavingPromptAsset" @click.stop="savePromptToMaterial('视频提示词', videoPrompts, { role: 'video_prompts' })">保存到素材</button>
                 <button v-if="videoPrompts" class="btn btn-ghost btn-sm" data-testid="export-video" @click.stop="activeTab = 'video'; exportCurrentContentMarkdown()">导出</button>
               </div>
             </div>
@@ -3355,6 +3531,7 @@ function copyDramaMarkdown() {
                     <div class="workflow-step-actions">
                       <button class="btn btn-ghost btn-sm" @click.stop="copyToClipboard(step.prompt)">复制</button>
                       <button class="btn btn-ghost btn-sm" @click.stop="applyVideoAipStep(step)">应用</button>
+                      <button class="btn btn-ghost btn-sm" :disabled="isSavingPromptAsset" @click.stop="savePromptToMaterial(step.title || '视频 AIP 步骤提示词', step.prompt, { role: 'video_aip_step', stepKey: step.displayKey })">保存到素材</button>
                       <template v-if="videoAipProject && step.isPersistedTask">
                         <button
                           class="btn btn-primary btn-sm"
@@ -3444,6 +3621,7 @@ function copyDramaMarkdown() {
                   <div class="support-assets-head">
                     <strong>分镜提示词</strong>
                     <button class="btn btn-ghost btn-sm" @click.stop="copyToClipboard(videoPrompts)">复制</button>
+                    <button class="btn btn-ghost btn-sm" :disabled="isSavingPromptAsset" @click.stop="savePromptToMaterial('分镜提示词', videoPrompts, { role: 'storyboard_prompt' })">保存到素材</button>
                   </div>
                   <pre class="content-text support-assets-text">{{ videoPrompts }}</pre>
                 </article>
@@ -3451,6 +3629,7 @@ function copyDramaMarkdown() {
                   <div class="support-assets-head">
                     <strong>封面提示词</strong>
                     <button class="btn btn-ghost btn-sm" @click.stop="copyToClipboard(coverPrompt)">复制</button>
+                    <button class="btn btn-ghost btn-sm" :disabled="isSavingPromptAsset" @click.stop="savePromptToMaterial('封面提示词', coverPrompt, { role: 'cover_prompt' })">保存到素材</button>
                   </div>
                   <pre class="content-text support-assets-text">{{ coverPrompt }}</pre>
                 </article>
@@ -3467,6 +3646,28 @@ function copyDramaMarkdown() {
               <h3>生成配置侧栏</h3>
               <p>文案、封面、视频都在这里选择后台模板、模型和补充提示词；后台控制系统提示词，用户只改本次生成要求。</p>
             </div>
+
+            <section class="sidecar-card">
+              <div class="sidecar-card-head">
+                <strong>提示词素材归属</strong>
+                <span>{{ promptAssetProjectId ? '保存到指定项目' : '默认保存到个人素材库' }}</span>
+              </div>
+              <label class="form-label">归属项目</label>
+              <select v-model.number="promptAssetProjectId" class="input">
+                <option :value="0">不绑定项目</option>
+                <option v-for="project in promptAssetProjects" :key="project.projectId" :value="project.projectId">
+                  {{ project.name }}
+                </option>
+              </select>
+              <label class="form-label">归属选题</label>
+              <select v-model.number="promptAssetTopicId" class="input" :disabled="!promptAssetProjectId">
+                <option :value="0">不绑定选题</option>
+                <option v-for="topic in promptAssetTopics" :key="topic.topicId" :value="topic.topicId">
+                  {{ topic.title }}
+                </option>
+              </select>
+              <p class="sidecar-hint">点击“保存到素材”时会带上这里的归属，并自动避免重复保存同一份提示词。</p>
+            </section>
 
             <section class="sidecar-card">
               <div class="sidecar-card-head">
@@ -3788,7 +3989,7 @@ function copyDramaMarkdown() {
           </div>
 
           <!-- 原始内容折叠 -->
-          <details class="raw-md-details">
+          <details v-if="isAdminUser" class="raw-md-details">
             <summary>查看原始内容</summary>
             <pre class="content-text">{{ dramaResult.raw_markdown }}</pre>
           </details>

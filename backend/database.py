@@ -34,6 +34,7 @@ def init_db():
     _ensure_prompt_template_columns()
     _ensure_ai_model_config_columns()
     _ensure_platform_restructure_columns()
+    _ensure_teleprompter_draft_columns()
     _ensure_wechat_columns()
     _ensure_admin_account()
 
@@ -113,6 +114,22 @@ def _required_existing_columns() -> dict[str, set[str]]:
         "generation_tasks": {"raw_response_excerpt", "retry_count", "parent_task_id"},
         "video_aip_projects": {"user_id", "source_type", "source_ref_id", "source_assets_json"},
         "short_video_projects": {"user_id"},
+        "teleprompter_drafts": {
+            "user_id",
+            "title",
+            "content",
+            "settings_json",
+            "current_paragraph_index",
+            "current_scroll_position",
+            "source",
+            "source_id",
+            "word_count",
+            "paragraph_count",
+            "status",
+            "is_active",
+            "created_at",
+            "updated_at",
+        },
     }
 
 
@@ -305,6 +322,36 @@ def _ensure_platform_restructure_columns():
             for name, ddl in columns.items():
                 if name not in existing:
                     conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_teleprompter_draft_columns():
+    """补齐在线提词器云端草稿字段，兼容旧 SQLite 开发库。"""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    inspector = inspect(engine)
+    if "teleprompter_drafts" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("teleprompter_drafts")}
+    columns = {
+        "user_id": "INTEGER DEFAULT 0",
+        "title": "VARCHAR(100) DEFAULT '未命名提词稿'",
+        "content": "TEXT DEFAULT ''",
+        "settings_json": "TEXT DEFAULT '{}'",
+        "current_paragraph_index": "INTEGER DEFAULT 0",
+        "current_scroll_position": "INTEGER DEFAULT 0",
+        "source": "VARCHAR(50) DEFAULT 'blank'",
+        "source_id": "VARCHAR(100) DEFAULT ''",
+        "word_count": "INTEGER DEFAULT 0",
+        "paragraph_count": "INTEGER DEFAULT 0",
+        "status": "VARCHAR(30) DEFAULT 'editing'",
+        "is_active": "BOOLEAN DEFAULT 1",
+        "created_at": "DATETIME",
+        "updated_at": "DATETIME",
+    }
+    with engine.begin() as conn:
+        for name, ddl in columns.items():
+            if name not in existing:
+                conn.execute(text(f"ALTER TABLE teleprompter_drafts ADD COLUMN {name} {ddl}"))
 
 
 def get_db() -> Session:

@@ -15,6 +15,7 @@ import {
   type TeleprompterDraftPayload,
   type TeleprompterDraftSummary,
 } from '../api/teleprompter.api'
+import { looksLikePromptTitle, splitPromptTextBySpeechBoundary } from '../utils/promptText'
 
 const STORAGE_KEY = 'ip-case-teleprompter-state'
 const DOC_IMPORT_ACCEPT = '.txt,.md,.doc,.docx,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -346,7 +347,8 @@ async function refreshCloudDrafts(showLoading = true) {
     const res = await listTeleprompterDrafts({ page: 1, pageSize: 8 })
     cloudDrafts.value = res.data.items || []
   } catch (err: any) {
-    draftListError.value = err?.response?.data?.detail || err?.message || '草稿列表加载失败'
+    cloudDrafts.value = []
+    draftListError.value = getCloudDraftErrorMessage(err, '草稿列表加载失败')
   } finally {
     if (showLoading) isDraftListLoading.value = false
   }
@@ -463,11 +465,18 @@ async function loadCloudDraft() {
     message.value = '已恢复最近云端提词草稿。'
     return true
   } catch (err: any) {
-    cloudDraftError.value = err?.response?.data?.detail || err?.message || '云端草稿加载失败，已回退本地草稿'
+    cloudDraftError.value = getCloudDraftErrorMessage(err, '云端草稿加载失败，已回退本地草稿')
     return false
   } finally {
     isCloudDraftLoading.value = false
   }
+}
+
+function getCloudDraftErrorMessage(err: any, fallback: string) {
+  const status = err?.response?.status
+  const detail = err?.response?.data?.detail
+  if (status === 500) return '云端草稿服务异常，已保留本地草稿；请重启后端后再刷新。'
+  return detail || err?.message || fallback
 }
 
 async function loadSourceScriptFromUrl() {
@@ -850,8 +859,7 @@ function resetContentPosition(focusTarget: 'editor' | 'viewport' | 'none' = 'non
 }
 
 function splitPromptSegments(text: string) {
-  return text
-    .split(/(?<=[。！？!?；;\.])\s*|\n+/)
+  return splitPromptTextBySpeechBoundary(text)
     .map((segment) => segment.trim())
     .filter(Boolean)
     .map((segment, index) => ({
@@ -943,8 +951,7 @@ function getPromptSections(text: string, segments: PromptSegment[]) {
 
   for (const line of lines) {
     const normalizedLine = normalizeSpeechText(line)
-    const looksLikeTitle = /^#{1,6}\s+/.test(line) || /^【.+】$/.test(line) || /^\d+[\.、]/.test(line) || line.length <= 14
-    if (!looksLikeTitle) continue
+    if (!looksLikePromptTitle(line)) continue
 
     const segment = segments.find((item) => item.normalized.includes(normalizedLine) || normalizedLine.includes(item.normalized))
     if (!segment || sections.some((section) => section.segmentIndex === segment.index)) continue
@@ -1742,7 +1749,7 @@ onUnmounted(() => {
             </article>
           </div>
 
-          <p v-else class="cloud-draft-empty">保存一次后，这里会显示云端提词稿。</p>
+          <p v-else-if="!draftListError" class="cloud-draft-empty">保存一次后，这里会显示云端提词稿。</p>
         </section>
 
         <div class="teleprompter-editor-actions">

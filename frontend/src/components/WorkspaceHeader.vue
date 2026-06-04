@@ -35,19 +35,18 @@ const emit = defineEmits<{
 }>()
 
 const primaryNav: NavItem[] = [
-  { label: '总览', mode: 'home', group: 'overview', title: '首页总览与快捷开工' },
-  { label: '生产中心', mode: 'ip', group: 'produce', title: '围绕 IP 项目和内容选题组织素材、平台内容、任务和资产' },
-  { label: '发布工具', mode: 'platform', group: 'publish', title: '多平台内容与公众号排版兼容入口' },
-  { label: '系统设置', mode: 'models', group: 'system', title: '模型中转与提示词配置' },
+  { label: '首页', mode: 'home', group: 'overview', title: '首页' },
+  { label: '生产中心', mode: 'ip', group: 'produce', title: '生产中心' },
+  { label: '公众号排版', mode: 'wechat', group: 'publish', title: '公众号排版' },
+  { label: '设置', mode: 'models', group: 'system', title: '设置', adminOnly: true },
 ]
 
 const groupedNav: NavItem[] = [
-  { label: 'IP 档案库', mode: 'sprint1', group: 'produce', title: '全案底座 Sprint1' },
-  { label: '多平台工作台', mode: 'platform', group: 'publish', title: '小红书、抖音、视频号内容生成与资产管理兼容入口' },
-  { label: '反转剧编剧', mode: 'reversal', group: 'produce', title: '生成反转剧分镜脚本' },
-  { label: '公众号排版', mode: 'wechat', group: 'publish', title: '公众号排版与草稿箱发布兼容入口' },
-  { label: '模型中转', mode: 'models', group: 'system', title: '模型中转与默认模型' },
-  { label: '提示词管理', mode: 'prompts', group: 'system', title: '提示词分类与模板管理', adminOnly: true },
+  { label: 'IP 档案', mode: 'sprint1', group: 'produce', title: 'IP 档案' },
+  { label: '小红书/口播', mode: 'platform', group: 'produce', title: '小红书/口播' },
+  { label: '反转剧编剧', mode: 'reversal', group: 'produce', title: '反转剧编剧' },
+  { label: '模型设置', mode: 'models', group: 'system', title: '模型设置', adminOnly: true },
+  { label: '提示词工具', mode: 'prompts', group: 'system', title: '提示词工具', adminOnly: true },
 ]
 
 function isGroupActive(group: NavItem['group']) {
@@ -81,7 +80,7 @@ function selectNav(item: NavItem) {
 
       <nav v-if="!isGuestUser" class="mode-switcher app-mode-tabs" aria-label="工作台一级导航">
         <button
-          v-for="item in primaryNav"
+          v-for="item in primaryNav.filter((nav) => !nav.adminOnly || isAdminUser)"
           :key="item.mode"
           class="tab-item"
           :class="{ active: item.mode === workspaceMode || isGroupActive(item.group) }"
@@ -92,9 +91,9 @@ function selectNav(item: NavItem) {
       </nav>
     </div>
 
-    <div v-if="workspaceMode !== 'ip'" class="header-right">
-      <details v-if="!isGuestUser" class="module-menu">
-        <summary class="btn btn-ghost btn-sm">模块</summary>
+    <div class="header-right">
+      <details v-if="!isGuestUser && isAdminUser" class="module-menu">
+        <summary class="btn btn-ghost btn-sm">更多</summary>
         <div class="module-menu-panel" role="menu">
           <button
             v-for="item in groupedNav.filter((nav) => !nav.adminOnly || isAdminUser)"
@@ -105,10 +104,6 @@ function selectNav(item: NavItem) {
           >{{ item.label }}</button>
         </div>
       </details>
-      <div v-if="!isGuestUser" class="global-search" title="快捷搜索和命令入口" aria-label="快捷搜索入口">
-        <span>搜索功能 / 项目 / 任务</span>
-        <kbd>⌘K</kbd>
-      </div>
       <div v-if="currentUser" class="user-chip" :title="currentUser.email">
         <span>{{ currentUser.isGuest ? '游客' : currentUser.name }}</span>
       </div>
@@ -282,31 +277,6 @@ function selectNav(item: NavItem) {
   color: var(--color-accent-primary);
 }
 
-.global-search {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 220px;
-  padding: 9px 10px 9px 14px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: #fff;
-  color: var(--color-text-muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.global-search kbd {
-  padding: 3px 7px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-secondary);
-  font-family: var(--font-sans);
-  font-size: 11px;
-  font-weight: 900;
-}
-
 .user-chip,
 .guest-scope-chip {
   display: inline-flex;
@@ -392,7 +362,6 @@ function selectNav(item: NavItem) {
     padding: 10px 14px;
   }
 
-  .global-search,
   .badge-accent,
   .user-chip {
     display: none;

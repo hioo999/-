@@ -14,6 +14,16 @@ function workspaceProps(mode: WorkspaceMode) {
   return { initialMode: mode }
 }
 
+function isStoredAdminUser() {
+  try {
+    const raw = window.localStorage.getItem('ip-case-active-user')
+    if (!raw) return false
+    return JSON.parse(raw)?.is_admin === true
+  } catch {
+    return false
+  }
+}
+
 const routes: RouteRecordRaw[] = [
   { path: '/', name: 'home', component: HomeView },
   { path: modePathMap.ip, name: 'content-workspace', component: CopilotWorkspace, meta: workspaceProps('ip') },
@@ -33,7 +43,11 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
+  if ((to.path === modePathMap.models || to.path === modePathMap.prompts) && !isStoredAdminUser()) {
+    return modePathMap.home
+  }
   if (to.path === '/' && to.hash && legacyHashPathMap[to.hash]) {
+    if ((to.hash === '#/models' || to.hash === '#/prompts') && !isStoredAdminUser()) return modePathMap.home
     return legacyHashPathMap[to.hash]
   }
   return true

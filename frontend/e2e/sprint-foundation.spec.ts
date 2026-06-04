@@ -45,6 +45,11 @@ test.describe('首页与内容生产冒烟', () => {
     await expect(page.getByRole('heading', { name: 'IP 项目' })).toBeVisible()
     await expect(page.getByRole('heading', { name: '内容选题', exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: '素材输入' })).toBeVisible()
+    const productionGuide = page.getByRole('region', { name: '生产任务引导' })
+    await expect(productionGuide.getByRole('heading', { name: '先选一个生产目标' })).toBeVisible()
+    await expect(productionGuide.getByRole('button', { name: /生成一条口播视频/ })).toBeVisible()
+    await expect(productionGuide.getByRole('button', { name: /做一篇公众号文章/ })).toBeVisible()
+    await expect(productionGuide.getByText('当前该做：')).toBeVisible()
     const productionNav = page.getByRole('navigation', { name: '生产中心模块' })
     await expect(productionNav.getByRole('button')).toHaveCount(5)
     await expect(productionNav.getByRole('button', { name: /选题总览/ })).toBeVisible()
@@ -52,6 +57,30 @@ test.describe('首页与内容生产冒烟', () => {
     await expect(productionNav.getByRole('button', { name: /小红书\/口播/ })).toBeVisible()
     await expect(productionNav.getByRole('button', { name: /提词器/ })).toBeVisible()
     await expect(productionNav.getByRole('button', { name: /高级视频/ })).toBeVisible()
+  })
+
+  test('生产中心任务入口会切换推荐路径和素材输入方式', async ({ page, request }, testInfo) => {
+    await signIn(page, request, testInfo)
+    await page.goto('/workspace/content')
+
+    const productionGuide = page.getByRole('region', { name: '生产任务引导' })
+    await productionGuide.getByRole('button', { name: /做一篇公众号文章/ }).click()
+    await expect(productionGuide.getByLabel('推荐生产顺序').getByText('素材 -> 二创长文 -> 公众号排版 -> 草稿箱')).toBeVisible()
+    await expect(productionGuide.getByLabel('当前任务目标平台').getByText('公众号')).toBeVisible()
+    await expect(page.getByRole('textbox', { name: '原文' })).toBeVisible()
+    await expect(productionGuide.getByRole('region', { name: '首单生产向导' })).toBeVisible()
+    await productionGuide.getByRole('button', { name: '用示例开始' }).click()
+    await expect(page.getByRole('textbox', { name: '选题名称' })).toHaveValue('从一篇资料整理成企业 IP 长文')
+    await expect(page.getByRole('textbox', { name: '原文' })).toHaveValue(/企业想通过公众号建立专业信任/)
+    await expect(productionGuide.getByText('当前该做：建立 IP 项目')).toBeVisible()
+
+    await productionGuide.getByRole('button', { name: /准备一场直播话术/ }).click()
+    await expect(productionGuide.getByLabel('推荐生产顺序').getByText('产品/活动 -> 直播脚本 -> 在线提词器')).toBeVisible()
+    await expect(productionGuide.getByLabel('当前任务目标平台').getByText('抖音')).toBeVisible()
+    await expect(page.getByRole('textbox', { name: '主题' })).toBeVisible()
+    await productionGuide.getByRole('button', { name: '用示例开始' }).click()
+    await expect(page.getByRole('textbox', { name: '选题名称' })).toHaveValue('618 活动直播开场和促单话术')
+    await expect(page.getByRole('textbox', { name: '主题' })).toHaveValue(/直播主题是 618 限时活动/)
   })
 
   test('提示词管理页可创建分类和模板', async ({ page, request }, testInfo) => {
@@ -139,7 +168,7 @@ test.describe('首页与内容生产冒烟', () => {
 
     await page.getByRole('textbox', { name: '素材标题' }).fill('E2E 主题素材')
     await page.getByRole('textbox', { name: '主题' }).fill('如何用 AI 内容中心提升个人 IP 内容生产效率')
-    await page.getByRole('button', { name: '保存素材' }).click()
+    await page.getByRole('button', { name: '保存素材', exact: true }).click()
     await expect(page.getByText('素材已保存到当前选题资产库。')).toBeVisible()
     await expect(page.locator('.production-status-card').filter({ hasText: '资产沉淀' })).toContainText('1')
     await expect(page.locator('.asset-item').filter({ hasText: 'E2E 主题素材' })).toBeVisible()

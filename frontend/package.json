@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "vue-tsc -b && vite build",
+    "test:prompt": "node tests/promptText.test.mjs",
     "test:e2e": "playwright test",
     "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort"
   },

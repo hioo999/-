@@ -920,6 +920,18 @@ class PlatformAssetsTasksApiTest(unittest.TestCase):
         self.assertEqual(data["task"]["taskType"], "teleprompter_import")
         self.assertEqual(data["task"]["status"], "succeeded")
 
+    def test_teleprompter_cloud_drafts_empty_state(self) -> None:
+        empty_headers = self._auth("teleprompter-empty@example.com")
+
+        recent = self.client.get("/api/teleprompter/drafts/recent", headers=empty_headers)
+        self.assertEqual(recent.status_code, 200, recent.text)
+        self.assertIsNone(recent.json()["data"])
+
+        listed = self.client.get("/api/teleprompter/drafts?page=1&pageSize=8", headers=empty_headers)
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertEqual(listed.json()["data"]["items"], [])
+        self.assertEqual(listed.json()["data"]["total"], 0)
+
     def test_platform_content_studio_supporting_resources(self) -> None:
         project_id, topic_id, content_id = self._create_project_topic_content()
         with SessionLocal() as db:

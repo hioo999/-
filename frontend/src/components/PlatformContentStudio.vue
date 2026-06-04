@@ -48,6 +48,7 @@ const props = defineProps<{
   initialContent?: string
   initialProjectId?: number
   initialTopicId?: number
+  currentUser?: { is_admin?: boolean }
 }>()
 
 const mode = ref<PlatformMode>('xiaohongshu')
@@ -79,6 +80,7 @@ const currentContent = ref<PlatformContentData | null>(null)
 const exportPackage = ref<any | null>(null)
 const workspaceOverview = ref<PlatformWorkspaceOverviewData | null>(null)
 let supportPollTimer: number | null = null
+const isAdminUser = computed(() => props.currentUser?.is_admin === true)
 
 const projectForm = reactive({
   name: '默认 IP 项目',
@@ -169,6 +171,60 @@ const hasRunningSupportItems = computed(() => {
   const runningAssets = assets.value.some((asset) => ['pending', 'running', 'processing'].includes(String(asset.status || '')))
   return runningTasks || runningAssets
 })
+
+const taskTypeLabelMap: Record<string, string> = {
+  xiaohongshu_note: '小红书内容',
+  short_video_script: '口播内容',
+  image_generation: '图片生成',
+  video_generation: '视频生成',
+  text_generation: '文案生成',
+  platform_content_image: '配图生成',
+}
+
+const statusLabelMap: Record<string, string> = {
+  draft: '草稿',
+  editing: '编辑中',
+  ready: '可使用',
+  pending: '排队中',
+  running: '生成中',
+  processing: '处理中',
+  retrying: '重试中',
+  completed: '已完成',
+  success: '已完成',
+  failed: '待处理',
+  reserved: '待启用',
+  active: '可用',
+}
+
+const assetTypeLabelMap: Record<string, string> = {
+  image: '图片素材',
+  cover: '封面素材',
+  source_material: '选题素材',
+  platform_content: '内容素材',
+  video: '视频素材',
+}
+
+const storyboardTypeLabelMap: Record<string, string> = {
+  drama: '剧本短视频',
+  cinematic: '短大片',
+  talking_head: '口播',
+}
+
+function formatTaskType(value?: string) {
+  return taskTypeLabelMap[String(value || '')] || '内容生成'
+}
+
+function formatStatus(value?: string) {
+  return statusLabelMap[String(value || '')] || '处理中'
+}
+
+function formatAssetType(value?: string) {
+  return assetTypeLabelMap[String(value || '')] || '素材'
+}
+
+function formatStoryboardType(value?: string) {
+  return storyboardTypeLabelMap[String(value || '')] || '分镜'
+}
 
 watch(mode, async () => {
   publishForm.platform = mode.value
@@ -536,7 +592,7 @@ async function handleGenerateImage(slotIndex: number) {
 
 async function handleAddImageUrl(slotIndex = -1) {
   if (!currentContent.value) return
-  const imageUrl = window.prompt('请输入公网可访问图片 URL')?.trim()
+  const imageUrl = window.prompt('请输入可访问的图片链接')?.trim()
   if (!imageUrl) return
   try {
     const res = await addPlatformContentImageAsset(currentContent.value.contentId, {
@@ -547,7 +603,7 @@ async function handleAddImageUrl(slotIndex = -1) {
       tags: [mode.value, platformMeta.value.contentType],
     })
     await syncContent(res.data.content)
-    setFeedback('success', res.message || '图片 URL 已保存为资产。')
+    setFeedback('success', res.message || '图片链接已保存为素材。')
     await refreshSupportData()
   } catch (err: any) {
     setFeedback('error', getErrorMessage(err, '添加图片资产失败'))
@@ -688,12 +744,12 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
   <div class="platform-studio">
     <header class="studio-hero">
       <div>
-        <span class="section-eyebrow">Content Studio</span>
+        <span class="section-eyebrow">平台内容</span>
         <h2>多平台内容工作台</h2>
-        <p>在同一个 IP 项目下生成小红书图文、抖音/视频号口播，并整理素材、角色、分镜和发布配置。</p>
+        <p>在同一个 IP 项目下生成小红书图文、抖音/视频号口播，并整理素材、角色和分镜。</p>
       </div>
       <div class="hero-actions">
-        <span v-if="hasRunningSupportItems" class="polling-chip">任务轮询中</span>
+        <span v-if="hasRunningSupportItems" class="polling-chip">生成处理中</span>
         <button class="btn btn-ghost" :disabled="isPollingSupportData" @click="refreshSupportData">{{ isPollingSupportData ? '刷新中...' : '刷新资产' }}</button>
         <button class="btn btn-primary" :disabled="!canGenerate" @click="handleGenerate">{{ isGenerating ? '生成中...' : `生成${platformMeta.label}` }}</button>
       </div>
@@ -743,22 +799,22 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
         </div>
 
         <div class="form-panel">
-          <h3>模板与模型</h3>
-          <label>提示词模板
+          <h3>生成偏好</h3>
+          <label>创作模板
             <select v-model.number="selectedPromptTemplateId" class="input">
               <option :value="0">使用默认模板</option>
               <option v-for="template in promptTemplates" :key="template.id" :value="template.id">{{ template.name }} · {{ template.version }}</option>
             </select>
           </label>
-          <label>文本模型
+          <label>文案生成方式
             <select v-model.number="selectedTextModelId" class="input">
-              <option :value="0">系统默认</option>
+              <option :value="0">推荐设置</option>
               <option v-for="model in textModels" :key="model.id" :value="model.id || 0">{{ model.name }} · {{ model.provider }}</option>
             </select>
           </label>
-          <label>图片模型
+          <label>图片生成方式
             <select v-model.number="selectedImageModelId" class="input">
-              <option :value="0">系统默认</option>
+              <option :value="0">推荐设置</option>
               <option v-for="model in imageModels" :key="model.id" :value="model.id || 0">{{ model.name }} · {{ model.provider }}</option>
             </select>
           </label>
@@ -770,14 +826,14 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
       <article class="studio-card editor-card">
         <div class="card-head">
           <div>
-            <span class="section-eyebrow">Editor</span>
+            <span class="section-eyebrow">内容编辑</span>
             <h3>{{ currentContent ? currentContent.title : '等待生成内容' }}</h3>
-            <p>{{ currentContent ? `${currentContent.platform} · ${currentContent.contentType} · ${currentContent.status}` : '生成小红书或口播后，可在这里编辑、复制和进入下一步工具。' }}</p>
+            <p>{{ currentContent ? `${formatTaskType(currentContent.contentType)} · ${formatStatus(currentContent.status)}` : '生成小红书或口播后，可在这里编辑、复制和进入下一步工具。' }}</p>
           </div>
           <div class="card-actions">
             <button class="btn btn-ghost" :disabled="!currentContent || isSaving" @click="handleSaveContent">{{ isSaving ? '保存中...' : '保存' }}</button>
             <button class="btn btn-ghost" :disabled="!currentContent" @click="handleExport">复制/导出</button>
-            <button class="btn btn-ghost" :disabled="!currentContent" @click="handleDownloadPackage">下载包</button>
+            <button class="btn btn-ghost" :disabled="!currentContent" @click="handleDownloadPackage">下载内容</button>
             <button class="btn btn-primary" :disabled="!currentContent || mode === 'xiaohongshu'" @click="handleImportTeleprompter">导入提词器</button>
           </div>
         </div>
@@ -799,7 +855,7 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
           <article v-for="item in contents" :key="item.contentId" class="content-list-item" :class="{ active: selectedContentId === item.contentId }">
             <button class="content-open-btn" @click="selectedContentId = item.contentId">
               <strong>{{ item.title || '未命名内容' }}</strong>
-              <span>{{ item.status }} · {{ item.updatedAt?.slice(0, 10) }}</span>
+            <span>{{ formatStatus(item.status) }} · {{ item.updatedAt?.slice(0, 10) }}</span>
             </button>
             <button class="mini-link danger" @click="handleDeleteContent(item)">移除</button>
           </article>
@@ -809,8 +865,8 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
           <div class="list-head"><strong>生成进度</strong><button class="mini-link" :disabled="isPollingSupportData" @click="refreshSupportData">{{ isPollingSupportData ? '刷新中' : '刷新' }}</button></div>
           <p v-if="!tasks.length">暂无生成进度。</p>
           <article v-for="task in tasks.slice(0, 6)" :key="task.taskId" class="compact-item">
-            <span>{{ task.taskType }}</span>
-            <strong>{{ task.status }} · {{ task.progress }}%</strong>
+            <span>{{ formatTaskType(task.taskType) }}</span>
+            <strong>{{ formatStatus(task.status) }} · {{ task.progress }}%</strong>
             <small>{{ task.status === 'failed' ? '生成失败，可稍后重试。' : '正在处理内容生成。' }}</small>
           </article>
         </section>
@@ -820,13 +876,13 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
     <section class="studio-grid">
       <article class="studio-card">
         <div class="card-head compact">
-          <div><h3>图片资产与配图</h3><p>小红书默认多图，口播默认封面图；生成、上传或绑定图片后进入资产库。</p></div>
+          <div><h3>图片与配图</h3><p>小红书默认多图，口播默认封面图；生成、上传或选择图片后进入素材库。</p></div>
           <div class="card-actions">
             <label class="btn btn-ghost btn-sm upload-btn" :class="{ disabled: !currentContent }">
               上传图片
               <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" :disabled="!currentContent" @change="handleUploadImageFile(-1, $event)" />
             </label>
-            <button class="btn btn-ghost btn-sm" :disabled="!currentContent" @click="handleAddImageUrl(-1)">添加图片 URL</button>
+            <button class="btn btn-ghost btn-sm" :disabled="!currentContent" @click="handleAddImageUrl(-1)">添加图片链接</button>
           </div>
         </div>
         <div v-if="imageSlots.length" class="slot-grid">
@@ -842,41 +898,41 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
                 上传
                 <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" @change="handleUploadImageFile(index, $event)" />
               </label>
-              <button class="btn btn-ghost btn-sm" @click="handleAddImageUrl(index)">绑定URL</button>
+              <button class="btn btn-ghost btn-sm" @click="handleAddImageUrl(index)">使用图片链接</button>
             </div>
           </article>
         </div>
         <div v-else class="empty-box">当前内容暂无图片位，生成小红书内容后会出现首图和多图提示词。</div>
         <div class="asset-list">
           <article v-for="asset in assets.slice(0, 8)" :key="asset.assetId" class="compact-item">
-            <span>{{ asset.assetType }} · {{ asset.sourceType }}</span>
-            <strong>{{ asset.title || asset.url || asset.assetId }}</strong>
+            <span>{{ formatAssetType(asset.assetType) }}</span>
+            <strong>{{ asset.title || '未命名素材' }}</strong>
             <button v-if="asset.url" class="mini-link" @click="openAssetFile(asset)">查看/下载</button>
           </article>
         </div>
       </article>
 
-      <article class="studio-card">
-        <div class="card-head compact"><div><h3>平台发布配置</h3><p>第一版用于保存预留配置；小红书/抖音/视频号暂不自动发布。</p></div><button class="btn btn-primary btn-sm" @click="handleSavePublishConfig">保存配置</button></div>
+      <article v-if="isAdminUser" class="studio-card">
+        <div class="card-head compact"><div><h3>平台发布设置</h3><p>用于管理员维护平台账号和发布连接。</p></div><button class="btn btn-primary btn-sm" @click="handleSavePublishConfig">保存设置</button></div>
         <div class="mini-form-grid">
           <label>配置名称<input v-model="publishForm.name" class="input" placeholder="如：小红书主账号" /></label>
           <label>账号标识<input v-model="publishForm.accountLabel" class="input" placeholder="账号昵称或主体" /></label>
-          <label>接口地址<input v-model="publishForm.apiBase" class="input" placeholder="后续开放平台接口地址" /></label>
-          <label>密钥/令牌<input v-model="publishForm.credentials" class="input" type="password" placeholder="加密保存，列表不回显" /></label>
+          <label>发布服务地址<input v-model="publishForm.apiBase" class="input" placeholder="由管理员填写" /></label>
+          <label>账号授权信息<input v-model="publishForm.credentials" class="input" type="password" placeholder="安全保存，列表不回显" /></label>
           <label class="wide">备注<textarea v-model="publishForm.notes" class="input textarea compact"></textarea></label>
         </div>
         <div class="config-list">
           <article v-for="config in publishConfigs" :key="config.configId" class="compact-item">
-            <span>{{ config.platform }} · {{ config.status }}</span>
+            <span>{{ config.platform }} · {{ formatStatus(config.status) }}</span>
             <strong>{{ config.name }} · {{ config.accountLabel || '未填账号' }}</strong>
-            <small>{{ config.credentialsMasked ? '已保存密钥' : '无密钥' }}</small>
+            <small>{{ config.credentialsMasked ? '已完成授权' : '未完成授权' }}</small>
             <button class="mini-link danger" @click="handleDeletePublishConfig(config)">删除</button>
           </article>
         </div>
       </article>
 
       <article class="studio-card">
-        <div class="card-head compact"><div><h3>人物角色库</h3><p>剧本短视频第一版支持项目内最多 6 个角色，后续可扩展关系图谱。</p></div><button class="btn btn-primary btn-sm" @click="handleCreateCharacter">保存角色</button></div>
+        <div class="card-head compact"><div><h3>人物角色库</h3><p>用于管理短视频角色设定，便于后续生成剧情和分镜。</p></div><button class="btn btn-primary btn-sm" @click="handleCreateCharacter">保存角色</button></div>
         <div class="mini-form-grid">
           <label>角色名<input v-model="characterForm.name" class="input" /></label>
           <label>角色身份<input v-model="characterForm.identity" class="input" /></label>
@@ -887,7 +943,7 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
         </div>
         <div class="config-list">
           <article v-for="character in characters" :key="character.characterId" class="compact-item">
-            <span>{{ character.role || '角色' }} · {{ character.status }}</span>
+            <span>{{ character.role || '角色' }} · {{ formatStatus(character.status) }}</span>
             <strong>{{ character.name }}</strong>
             <small>{{ character.identity || character.personality || '未补充设定' }}</small>
             <button class="mini-link danger" @click="handleDeleteCharacter(character)">删除</button>
@@ -896,7 +952,7 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
       </article>
 
       <article class="studio-card">
-        <div class="card-head compact"><div><h3>分镜记录</h3><p>将口播或剧情拆成分镜表，后续可进入短大片/剧本短视频链路。</p></div><button class="btn btn-primary btn-sm" @click="handleSaveStoryboard">保存分镜</button></div>
+        <div class="card-head compact"><div><h3>分镜记录</h3><p>将口播或剧情拆成分镜表，用于短大片或剧本短视频创作。</p></div><button class="btn btn-primary btn-sm" @click="handleSaveStoryboard">保存分镜</button></div>
         <div class="mini-form-grid">
           <label>分镜标题<input v-model="storyboardForm.title" class="input" /></label>
           <label>类型<select v-model="storyboardForm.storyboardType" class="input"><option value="drama">剧本短视频</option><option value="cinematic">短大片</option><option value="talking_head">口播</option></select></label>
@@ -911,7 +967,7 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
         </div>
         <div class="config-list">
           <article v-for="storyboard in storyboards" :key="storyboard.storyboardId" class="compact-item">
-            <span>{{ storyboard.storyboardType }} · {{ storyboard.status }}</span>
+            <span>{{ formatStoryboardType(storyboard.storyboardType) }} · {{ formatStatus(storyboard.status) }}</span>
             <strong>{{ storyboard.title }}</strong>
             <small>{{ storyboard.frames?.length || 0 }} 个镜头</small>
             <button class="mini-link danger" @click="handleDeleteStoryboard(storyboard)">删除</button>
@@ -921,8 +977,21 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
     </section>
 
     <section v-if="exportPackage" class="studio-card export-card">
-      <div class="card-head compact"><div><h3>复制/下载包</h3><p>第一版不自动发布小红书、抖音或视频号，先提供复制文本和图片清单。</p></div></div>
-      <pre>{{ JSON.stringify(exportPackage.downloadManifest, null, 2) }}</pre>
+      <div class="card-head compact"><div><h3>复制/下载包</h3><p>已整理好复制文本和图片清单，可继续下载保存。</p></div></div>
+      <div class="export-summary">
+        <article>
+          <span>正文文件</span>
+          <strong>{{ exportPackage.downloadManifest?.files?.length || 0 }} 个</strong>
+        </article>
+        <article>
+          <span>图片素材</span>
+          <strong>{{ exportPackage.downloadManifest?.images?.length || 0 }} 张</strong>
+        </article>
+        <article>
+          <span>下载状态</span>
+          <strong>已准备</strong>
+        </article>
+      </div>
     </section>
   </div>
 </template>
@@ -1268,15 +1337,30 @@ label {
   color: #dc2626;
 }
 
-.export-card pre {
-  overflow: auto;
-  padding: 14px;
+.export-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.export-summary article {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 16px;
   background: #f8fafc;
-  color: #0f172a;
+}
+
+.export-summary span {
+  color: #64748b;
   font-size: 12px;
-  line-height: 1.6;
+  font-weight: 800;
+}
+
+.export-summary strong {
+  color: #0f172a;
+  font-size: 22px;
 }
 
 @media (max-width: 1100px) {
@@ -1301,7 +1385,8 @@ label {
   }
 
   .editor-grid,
-  .mini-form-grid {
+  .mini-form-grid,
+  .export-summary {
     grid-template-columns: 1fr;
   }
 }

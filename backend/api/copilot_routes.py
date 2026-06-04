@@ -602,7 +602,7 @@ def _active_prompt_categories(db: Session, template_type: str = "") -> list[dict
         return sorted(categories, key=lambda item: item["sort_order"])
 
 
-def _active_prompt_templates(db: Session, category_key: str = "", template_type: str = "") -> list[dict]:
+def _active_prompt_templates(db: Session, category_key: str = "", template_type: str = "", include_prompt_body: bool = False) -> list[dict]:
     try:
         _ensure_prompt_templates_seeded(db)
         query = db.query(PromptTemplate).filter(PromptTemplate.is_active == True)
@@ -611,7 +611,7 @@ def _active_prompt_templates(db: Session, category_key: str = "", template_type:
         if template_type:
             query = query.filter(PromptTemplate.template_type == template_type)
         templates = query.order_by(PromptTemplate.sort_order, PromptTemplate.id).all()
-        return [template.to_dict() for template in templates]
+        return [template.to_dict(include_prompt_body=include_prompt_body) for template in templates]
     except Exception as exc:
         db.rollback()
         logger.warning("读取提示词模板失败，使用静态默认配置: %s", exc)
@@ -620,16 +620,25 @@ def _active_prompt_templates(db: Session, category_key: str = "", template_type:
             templates = [template for template in templates if template["category_key"] == category_key]
         if template_type:
             templates = [template for template in templates if template.get("template_type", "text_script") == template_type]
-        return sorted(templates, key=lambda item: item["sort_order"])
+        templates = sorted(templates, key=lambda item: item["sort_order"])
+        if not include_prompt_body:
+            return [{key: value for key, value in template.items() if key != "prompt_body"} for template in templates]
+        return templates
 
 
 def _prompt_template_by_id_or_key(db: Session, template_id: int = 0, template_key: str = "", template_type: str = "") -> Optional[dict]:
-    for template in _active_prompt_templates(db, template_type=template_type):
+    for template in _active_prompt_templates(db, template_type=template_type, include_prompt_body=True):
         if template_id and template["id"] == template_id:
             return template
         if template_key and template["key"] == template_key:
             return template
     return None
+
+
+def _prompt_template_snapshot(template: Optional[dict]) -> Optional[dict]:
+    if not template:
+        return None
+    return {key: value for key, value in template.items() if key != "prompt_body"}
 
 
 def _prompt_template_profile(db: Session, template: Optional[dict], category_key: str = "") -> str:
@@ -2434,6 +2443,11 @@ async def generate_full_case(
         "cover_model": cover_model_config.to_dict() if cover_model_config else None,
         "video_model": video_model_config.to_dict() if video_model_config else None,
     }
+    template_snapshot = {
+        "text_script": _prompt_template_snapshot(prompt_template),
+        "image_cover": _prompt_template_snapshot(cover_template),
+        "video_clip": _prompt_template_snapshot(video_template),
+    }
     strategy_requirements = "\n".join([
         data.extra_requirements or "无",
         "",
@@ -2545,6 +2559,7 @@ async def generate_full_case(
             "video_duration": data.video_duration,
             "video_workflow_type": data.video_workflow_type,
             "models": model_snapshot,
+            "templates": template_snapshot,
         }, ensure_ascii=False),
     )
     db.add(history)
@@ -2558,10 +2573,11 @@ async def generate_full_case(
             "script_content": script_content,
             "video_prompts": video_prompts,
             "cover_prompt": cover_prompt,
-            "prompt_template": prompt_template,
-            "cover_prompt_template": cover_template,
-            "video_prompt_template": video_template,
+            "prompt_template": template_snapshot["text_script"],
+            "cover_prompt_template": template_snapshot["image_cover"],
+            "video_prompt_template": template_snapshot["video_clip"],
             "model_snapshot": model_snapshot,
+            "template_snapshot": template_snapshot,
             "prompt_template_id": history.prompt_template_id,
             "prompt_template_key": history.prompt_template_key,
             "prompt_template_version": history.prompt_template_version,

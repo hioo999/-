@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import WorkspaceHeader from '../components/WorkspaceHeader.vue'
 import { modeFromPath, modePathMap, type WorkspaceMode } from '../stores/workspace'
@@ -16,19 +16,25 @@ const emit = defineEmits<{
 const router = useRouter()
 const workspaceMode = computed(() => modeFromPath(router.currentRoute.value.path))
 const isGuestUser = computed(() => props.currentUser?.isGuest === true && !props.currentUser?.token)
-const isAdminUser = computed(() => props.currentUser?.is_admin === true || (Boolean(props.currentUser?.token) && props.currentUser?.is_admin !== false))
+const isAdminUser = computed(() => props.currentUser?.is_admin === true)
 
 function selectWorkspaceMode(mode: WorkspaceMode) {
   if (isGuestUser.value && mode !== 'teleprompter') {
     router.push(modePathMap.teleprompter)
     return
   }
-  if (mode === 'prompts' && !isAdminUser.value) {
+  if ((mode === 'models' || mode === 'prompts') && !isAdminUser.value) {
     router.push(modePathMap.home)
     return
   }
   router.push(modePathMap[mode])
 }
+
+watch([workspaceMode, isAdminUser], ([mode, admin]) => {
+  if ((mode === 'models' || mode === 'prompts') && !admin) {
+    router.replace(modePathMap.home)
+  }
+}, { immediate: true })
 </script>
 
 <template>

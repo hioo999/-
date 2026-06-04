@@ -28,6 +28,7 @@ See [architecture.md](./architecture.md) for architectural decisions.
 - [Plan: Frontend and Backend Architecture Refactor](./plan-frontend-backend-architecture-refactor.md)
 - [Plan: Production Center Platform Restructure](./plan-production-center-restructure.md)
 - [Schedule: Production Center Restructure Tasks](./schedule-production-center-restructure.md)
+- [PRD: Production Center Guided Workflow](./prd-production-center-guided-workflow.md)
 - [PRD: Unified Generation Config Sidebar and Video AIP Flow](./prd-generation-config-sidebar-and-video-aip.md)
 - [PRD: Video AIP Media Task Execution](./prd-video-aip-media-task-execution.md)
 - [Development Plan: Video AIP Task Pipeline](./plan-video-aip-task-pipeline.md)

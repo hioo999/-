@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { DashboardOverview } from '../api/dashboard.api'
-
 export type ToolKey = 'ip' | 'sprint1' | 'platform' | 'reversal' | 'teleprompter' | 'wechat' | 'models' | 'prompts'
 
 interface HomeNavItem {
@@ -9,12 +7,6 @@ interface HomeNavItem {
   tone: 'primary' | 'plain'
 }
 
-defineProps<{
-  dashboard?: DashboardOverview | null
-  loading?: boolean
-  error?: string
-}>()
-
 const emit = defineEmits<{
   select: [key: ToolKey]
 }>()
@@ -22,10 +14,9 @@ const emit = defineEmits<{
 const homeNavItems: HomeNavItem[] = [
   { title: '生产中心', key: 'ip', tone: 'primary' },
   { title: 'IP 档案', key: 'sprint1', tone: 'plain' },
-  { title: '多平台工作台', key: 'platform', tone: 'plain' },
+  { title: '小红书/口播', key: 'platform', tone: 'plain' },
   { title: '公众号排版', key: 'wechat', tone: 'plain' },
   { title: '反转剧编剧', key: 'reversal', tone: 'plain' },
-  { title: '模型设置', key: 'models', tone: 'plain' },
 ]
 </script>
 
@@ -87,7 +78,7 @@ const homeNavItems: HomeNavItem[] = [
 
 .home-nav-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 16px;
 }
 

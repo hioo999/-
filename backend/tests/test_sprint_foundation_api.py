@@ -6,6 +6,8 @@ import os
 import sys
 import tempfile
 import unittest
+import json
+from unittest.mock import patch
 
 TEST_DB_PATH = os.path.join(tempfile.gettempdir(), f"ip_system_sprint_test_{os.getpid()}.db")
 if os.path.exists(TEST_DB_PATH):
@@ -18,7 +20,8 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from database import SessionLocal  # noqa: E402
 from main import app  # noqa: E402
-from models.persona import AdminOperationLog  # noqa: E402
+from models.persona import AdminOperationLog, GenerationHistory  # noqa: E402
+from services.ai_service import AIResponse  # noqa: E402
 
 
 class SprintFoundationApiTest(unittest.TestCase):
@@ -334,6 +337,101 @@ class SprintFoundationApiTest(unittest.TestCase):
         self.assertIn("prompt_template.create", actions)
         self.assertIn("prompt_template.update", actions)
         self.assertIn("prompt_template.disable", actions)
+
+    def test_full_case_generation_records_template_snapshots(self) -> None:
+        suffix = os.getpid()
+
+        def create_template(template_type: str, label: str) -> int:
+            category_key = f"qa_{template_type}_{suffix}"
+            category = self.client.post(
+                "/api/copilot/prompt-template-categories",
+                json={
+                    "key": category_key,
+                    "template_type": template_type,
+                    "name": f"QA{label}分类",
+                    "description": "用于生成历史快照测试",
+                    "sort_order": 998,
+                },
+                headers=self.admin_headers,
+            )
+            self.assertEqual(category.status_code, 200, category.text)
+            template = self.client.post(
+                "/api/copilot/prompt-templates",
+                json={
+                    "key": f"qa_{template_type}_template_{suffix}",
+                    "template_type": template_type,
+                    "category_key": category_key,
+                    "platform": "douyin",
+                    "scene": "口播全案",
+                    "step": label,
+                    "name": f"QA{label}模板",
+                    "description": "验证生成历史记录模板快照",
+                    "scenario": "接口回归",
+                    "output_structure": "按测试结构输出",
+                    "writing_rules": ["必须注入后台模板正文"],
+                    "prompt_body": f"{label}内部正文，不应暴露给普通前端。",
+                    "version": "9.9.0",
+                    "change_note": "创建快照测试模板",
+                    "is_default": False,
+                    "sort_order": 998,
+                },
+                headers=self.admin_headers,
+            )
+            self.assertEqual(template.status_code, 200, template.text)
+            return template.json()["data"]["id"]
+
+        text_template_id = create_template("text_script", "口播")
+        cover_template_id = create_template("image_cover", "封面")
+        video_template_id = create_template("video_clip", "视频")
+        captured_messages: list[str] = []
+        fake_responses = iter(["QA口播文案", "QA视频提示词", "QA封面提示词"])
+
+        async def fake_chat(*args, **kwargs):
+            messages = args[0] if args and isinstance(args[0], list) else kwargs.get("messages", [])
+            captured_messages.append(json.dumps(messages, ensure_ascii=False))
+            return AIResponse(content=next(fake_responses))
+
+        with patch("api.copilot_routes.AIService.chat", side_effect=fake_chat):
+            generated = self.client.post(
+                "/api/copilot/generate",
+                json={
+                    "extracted_content": "测试生成历史模板快照",
+                    "persona_id": 0,
+                    "target_platform": "douyin",
+                    "extra_requirements": "保持专业",
+                    "prompt_template_id": text_template_id,
+                    "cover_prompt_template_id": cover_template_id,
+                    "video_prompt_template_id": video_template_id,
+                    "cover_aspect_ratio": "4:5",
+                    "cover_title": "测试封面",
+                    "video_aspect_ratio": "9:16",
+                    "video_duration": "15秒",
+                    "video_workflow_type": "product_tvc",
+                },
+                headers=self.owner_headers,
+            )
+        self.assertEqual(generated.status_code, 200, generated.text)
+        data = generated.json()["data"]
+        self.assertEqual(data["prompt_template_version"], "9.9.0")
+        self.assertNotIn("prompt_body", data["prompt_template"])
+        self.assertNotIn("prompt_body", data["cover_prompt_template"])
+        self.assertNotIn("prompt_body", data["video_prompt_template"])
+        self.assertIn("口播内部正文", "\n".join(captured_messages))
+        self.assertIn("封面内部正文", "\n".join(captured_messages))
+        self.assertIn("视频内部正文", "\n".join(captured_messages))
+
+        with SessionLocal() as db:
+            history = db.query(GenerationHistory).filter(GenerationHistory.id == data["history_id"]).first()
+            self.assertIsNotNone(history)
+            params = json.loads(history.generation_params_json)
+
+        self.assertEqual(params["cover_aspect_ratio"], "4:5")
+        self.assertEqual(params["templates"]["text_script"]["version"], "9.9.0")
+        self.assertEqual(params["templates"]["image_cover"]["id"], cover_template_id)
+        self.assertEqual(params["templates"]["video_clip"]["id"], video_template_id)
+        self.assertNotIn("prompt_body", params["templates"]["text_script"])
+        self.assertNotIn("prompt_body", params["templates"]["image_cover"])
+        self.assertNotIn("prompt_body", params["templates"]["video_clip"])
 
 
 if __name__ == "__main__":
