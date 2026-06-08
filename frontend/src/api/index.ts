@@ -62,6 +62,16 @@ export async function generateFullCase(params: GenerateParams) {
   return res.data
 }
 
+export async function reportGenerationActionEvent(params: {
+  history_id: number
+  event_type: 'edited' | 'saved' | 'teleprompter_opened'
+  content_type?: string
+  metadata?: Record<string, unknown>
+}) {
+  const res = await api.post('/api/copilot/generation-events', params)
+  return res.data
+}
+
 export interface PromptTemplateCategoryData {
   id?: number
   key: string
@@ -823,6 +833,8 @@ export interface ModifyParams {
   current_content: string
   user_instruction: string
   persona_id?: number
+  template_key?: string
+  cast_summary?: string
 }
 
 function readStreamContent(value: unknown): string | null {
@@ -1026,16 +1038,48 @@ export interface ReversalCharacter {
   role?: string
   personality?: string
   catchphrase?: string
+  speaking_style?: string
+  drama_role?: string
+  character_id?: number
 }
+
+export type ReversalCastSource = 'default' | 'preset' | 'ip_project' | 'manual'
+export type ReversalPattern = 'auto' | 'A' | 'B' | 'C'
 
 export interface ReversalDramaParams {
   product_name: string
   product_function: string
   pain_point: string
+  template_key?: string
+  reversal_pattern?: ReversalPattern
+  cast_source?: ReversalCastSource
+  cast_preset_id?: number
+  project_id?: number
   characters?: ReversalCharacter[] | null
   platform?: string
   duration?: string
   extra_requirements?: string
+}
+
+export interface DramaScriptTemplateData {
+  templateId?: number
+  key: string
+  name: string
+  description?: string
+  exampleHint?: string
+  category?: string
+  default_cast?: ReversalCharacter[]
+  relationshipHint?: string
+  sortOrder?: number
+}
+
+export interface DramaCastPresetData {
+  castPresetId: number
+  name: string
+  projectId: number
+  characters: ReversalCharacter[]
+  relationshipHint?: string
+  isDefault?: boolean
 }
 
 export interface ReversalScene {
@@ -1053,6 +1097,10 @@ export interface ReversalChecklistItem {
 
 export interface ReversalDramaResult {
   history_id: number
+  template_key?: string
+  template_name?: string
+  reversal_pattern?: string
+  cast_snapshot?: ReversalCharacter[]
   raw_markdown: string
   overview: {
     title?: string
@@ -1096,6 +1144,46 @@ export async function deleteReversalDramaHistory(id: number | string): Promise<{
 
 export async function clearReversalDramaHistory(): Promise<{ code: number; message: string }> {
   const res = await api.delete('/api/copilot/reversal-drama/history')
+  return res.data
+}
+
+export async function listDramaScriptTemplates(): Promise<{ code: number; data: DramaScriptTemplateData[] }> {
+  const res = await api.get('/api/copilot/drama-templates')
+  return res.data
+}
+
+export async function listDramaCastPresets(): Promise<{ code: number; data: DramaCastPresetData[] }> {
+  const res = await api.get('/api/copilot/drama-casts')
+  return res.data
+}
+
+export async function createDramaCastPreset(data: {
+  name: string
+  project_id?: number
+  characters: ReversalCharacter[]
+  relationship_hint?: string
+  is_default?: boolean
+}): Promise<{ code: number; data: DramaCastPresetData; message: string }> {
+  const res = await api.post('/api/copilot/drama-casts', data)
+  return res.data
+}
+
+export async function updateDramaCastPreset(
+  castId: number,
+  data: {
+    name: string
+    project_id?: number
+    characters: ReversalCharacter[]
+    relationship_hint?: string
+    is_default?: boolean
+  }
+): Promise<{ code: number; data: DramaCastPresetData; message: string }> {
+  const res = await api.put(`/api/copilot/drama-casts/${castId}`, data)
+  return res.data
+}
+
+export async function deleteDramaCastPreset(castId: number): Promise<{ code: number; message: string }> {
+  const res = await api.delete(`/api/copilot/drama-casts/${castId}`)
   return res.data
 }
 
@@ -1410,6 +1498,18 @@ export async function listSprint1IpAssets(params: { page?: number; pageSize?: nu
 
 export async function getSprint1IpAsset(ipId: string): Promise<{ code: number; data: Sprint1IpAsset }> {
   const res = await api.get(`/api/ip-assets/${ipId}`)
+  return res.data
+}
+
+export type IpAssetSectionKey = 'ip' | 'strategy' | 'columns' | 'topics'
+
+export async function generateSprint1IpAssetSection(params: {
+  section: IpAssetSectionKey
+  templateKey?: string
+  mode?: 'smart' | 'template'
+  context?: Record<string, string>
+}): Promise<{ code: number; data: { section: IpAssetSectionKey; fields: Record<string, string>; source: string }; message: string }> {
+  const res = await api.post('/api/ip-assets/generate-section', params)
   return res.data
 }
 

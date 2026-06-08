@@ -14,7 +14,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from database import SessionLocal, get_db
@@ -27,8 +27,11 @@ from models.persona import (
     PromptTemplate,
     PromptTemplateVersion,
     ReversalDramaHistory,
+    DramaCastPreset,
+    CharacterProfile,
     UserAccount,
     AdminOperationLog,
+    GenerationActionEvent,
     AIModelConfig,
     GenerationRecord,
     GenerationTask,
@@ -54,8 +57,12 @@ from prompts.ip_creation_prompts import (
     QUALITY_CHECK_SYSTEM, QUALITY_CHECK_USER,
 )
 from prompts.reversal_drama_prompts import (
-    REVERSAL_DRAMA_SYSTEM, REVERSAL_DRAMA_USER, build_characters_block,
+    REVERSAL_DRAMA_USER,
+    build_cast_block,
+    build_drama_system_prompt,
+    build_reversal_pattern_instruction,
 )
+from services.drama_script_service import get_drama_template, list_drama_templates
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/copilot", tags=["Copilot工作台"])
@@ -91,10 +98,19 @@ class GenerateRequest(BaseModel):
 
 
 class ModifyRequest(BaseModel):
-    content_type: str = Field(..., description="内容类型：script/video_prompts/cover_prompt")
+    content_type: str = Field(..., description="内容类型：script/video_prompts/cover_prompt/reversal_drama")
     current_content: str = Field(..., description="当前内容")
     user_instruction: str = Field(..., description="用户修改指令")
     persona_id: int = Field(0, description="IP 人设 ID")
+    template_key: str = Field("", description="短剧模板 key（reversal_drama 改稿上下文）")
+    cast_summary: str = Field("", description="角色组摘要（reversal_drama 改稿上下文）")
+
+
+class GenerationActionEventCreate(BaseModel):
+    history_id: int = Field(..., ge=1, description="生成历史 ID")
+    event_type: str = Field(..., max_length=60, description="edited/saved/teleprompter_opened")
+    content_type: str = Field("", max_length=60, description="script/video/cover/publish 等")
+    metadata: dict = Field(default_factory=dict, description="事件附加信息")
 
 
 class ColumnCreate(BaseModel):
@@ -255,18 +271,34 @@ class ReversalCharacter(BaseModel):
     role: str = Field("", description="岗位/身份")
     personality: str = Field("", description="性格底色")
     catchphrase: str = Field("", description="口头禅")
+    speaking_style: str = Field("", description="说话风格")
+    drama_role: str = Field("", description="剧情功能：pressure/buffer/reversal_carrier/product_introducer/other")
+    character_id: int = Field(0, description="关联 IP 项目角色 ID")
 
 
 class ReversalDramaRequest(BaseModel):
     product_name: str = Field(..., description="推销产品名")
     product_function: str = Field(..., description="产品一句话功能")
     pain_point: str = Field(..., description="要打的痛点")
+    template_key: str = Field("workplace_reversal", description="剧本类型 key")
+    reversal_pattern: str = Field("auto", description="反转套路：auto/A/B/C")
+    cast_source: str = Field("default", description="角色来源：default/preset/ip_project/manual")
+    cast_preset_id: int = Field(0, description="角色组预设 ID")
+    project_id: int = Field(0, description="IP 项目 ID（角色来源为 ip_project 时）")
     characters: Optional[list[ReversalCharacter]] = Field(
-        None, description="自定义人物，留空走默认铁三角（农总+淇淇+海鸥）"
+        None, description="自定义人物，留空走模板默认角色组"
     )
     platform: str = Field("视频号+抖音", description="发布平台")
     duration: str = Field("30-60秒", description="时长偏好")
     extra_requirements: str = Field("", description="额外要求")
+
+
+class DramaCastPresetPayload(BaseModel):
+    name: str = Field(..., max_length=120, description="角色组名称")
+    project_id: int = Field(0, description="关联 IP 项目，0 表示临时组")
+    characters: list[ReversalCharacter] = Field(default_factory=list, description="角色列表")
+    relationship_hint: str = Field("", description="人物关系一句话")
+    is_default: bool = Field(False, description="是否默认角色组")
 
 
 # ─── 后台提示词模板配置（MVP 静态配置，后续可迁移到数据库） ──────────────
@@ -641,6 +673,68 @@ def _prompt_template_snapshot(template: Optional[dict]) -> Optional[dict]:
     return {key: value for key, value in template.items() if key != "prompt_body"}
 
 
+def _template_metric_key(template_type: str, template_id: int) -> str:
+    return f"{template_type}:{template_id}"
+
+
+def _rate(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 4)
+
+
+def _prompt_template_usage_metrics(db: Session, template_type: str = "") -> list[dict]:
+    metric_specs = [
+        ("text_script", GenerationHistory.prompt_template_id),
+        ("image_cover", GenerationHistory.cover_prompt_template_id),
+        ("video_clip", GenerationHistory.video_prompt_template_id),
+    ]
+    metrics: dict[str, dict] = {}
+    for current_type, column in metric_specs:
+        if template_type and current_type != template_type:
+            continue
+        rows = (
+            db.query(
+                column.label("template_id"),
+                func.count(GenerationHistory.id).label("generation_count"),
+                func.max(GenerationHistory.created_at).label("last_generated_at"),
+            )
+            .filter(column > 0)
+            .group_by(column)
+            .all()
+        )
+        for row in rows:
+            template_id = int(row.template_id)
+            generation_count = int(row.generation_count or 0)
+            history_ids = db.query(GenerationHistory.id).filter(column == template_id)
+            event_rows = (
+                db.query(
+                    GenerationActionEvent.event_type,
+                    func.count(func.distinct(GenerationActionEvent.history_id)).label("event_count"),
+                )
+                .filter(
+                    GenerationActionEvent.history_id.in_(history_ids),
+                    GenerationActionEvent.event_type.in_(["edited", "saved", "teleprompter_opened"]),
+                )
+                .group_by(GenerationActionEvent.event_type)
+                .all()
+            )
+            event_counts = {event_type: int(event_count or 0) for event_type, event_count in event_rows}
+            metrics[_template_metric_key(current_type, int(row.template_id))] = {
+                "templateId": template_id,
+                "templateType": current_type,
+                "generationCount": generation_count,
+                "editedCount": event_counts.get("edited", 0),
+                "savedCount": event_counts.get("saved", 0),
+                "teleprompterOpenedCount": event_counts.get("teleprompter_opened", 0),
+                "editRate": _rate(event_counts.get("edited", 0), generation_count),
+                "saveRate": _rate(event_counts.get("saved", 0), generation_count),
+                "teleprompterRate": _rate(event_counts.get("teleprompter_opened", 0), generation_count),
+                "lastGeneratedAt": row.last_generated_at.isoformat() if row.last_generated_at else None,
+            }
+    return list(metrics.values())
+
+
 def _prompt_template_profile(db: Session, template: Optional[dict], category_key: str = "") -> str:
     if not template:
         if category_key:
@@ -693,6 +787,58 @@ def _record_admin_operation(
         ip_address=request.client.host if request.client else "",
         user_agent=request.headers.get("user-agent", "")[:500],
     ))
+
+
+def _prompt_template_security_findings(data: PromptTemplateCreate | PromptTemplateUpdate) -> list[dict]:
+    text = "\n".join([
+        data.name or "",
+        data.description or "",
+        data.output_structure or "",
+        "\n".join(data.writing_rules or []),
+        data.prompt_body or "",
+    ])
+    lower = text.lower()
+    findings: list[dict] = []
+    checks = [
+        ("secret_like_value", "疑似密钥或令牌", re.compile(r"(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*['\"]?[A-Za-z0-9_./+=-]{24,}")),
+        ("openai_secret_key", "疑似 OpenAI/API 密钥", re.compile(r"sk-[A-Za-z0-9_-]{20,}")),
+    ]
+    for code, message, pattern in checks:
+        if pattern.search(text):
+            findings.append({"code": code, "severity": "high", "message": message})
+    blocked_phrases = [
+        ("ignore previous instructions", "要求模型忽略上文/系统指令"),
+        ("ignore all previous instructions", "要求模型忽略上文/系统指令"),
+        ("reveal system prompt", "要求泄露系统提示词"),
+        ("print system prompt", "要求输出系统提示词"),
+        ("bypass safety", "要求绕过安全策略"),
+        ("jailbreak", "疑似越狱提示词"),
+        ("忽略之前", "要求模型忽略上文/系统指令"),
+        ("忽略以上", "要求模型忽略上文/系统指令"),
+        ("泄露系统提示词", "要求泄露系统提示词"),
+        ("输出系统提示词", "要求输出系统提示词"),
+        ("绕过安全", "要求绕过安全策略"),
+        ("越狱", "疑似越狱提示词"),
+    ]
+    for phrase, message in blocked_phrases:
+        if phrase in lower:
+            findings.append({"code": "prompt_injection_instruction", "severity": "high", "message": message, "match": phrase})
+    return findings
+
+
+def _assert_prompt_template_safe(data: PromptTemplateCreate | PromptTemplateUpdate) -> None:
+    findings = _prompt_template_security_findings(data)
+    if not findings:
+        return
+    messages = "；".join(item["message"] for item in findings[:3])
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "code": "PROMPT_TEMPLATE_SECURITY_RISK",
+            "message": f"提示词模板存在高风险内容：{messages}",
+            "findings": findings,
+        },
+    )
 
 
 def _active_model_configs(db: Session, user: UserAccount, model_type: str = "") -> list[dict]:
@@ -1806,6 +1952,16 @@ async def list_prompt_templates(category_key: str = "", template_type: str = "",
     return {"code": 0, "data": _active_prompt_templates(db, category_key, template_type)}
 
 
+@router.get("/prompt-templates/metrics", summary="获取提示词模板使用指标")
+async def list_prompt_template_metrics(
+    template_type: str = "",
+    db: Session = Depends(get_db),
+    current_user: UserAccount = Depends(get_admin_user),
+):
+    del current_user
+    return {"code": 0, "data": _prompt_template_usage_metrics(db, template_type)}
+
+
 @router.post("/prompt-templates", summary="创建口播提示词模板")
 async def create_prompt_template(
     data: PromptTemplateCreate,
@@ -1814,6 +1970,7 @@ async def create_prompt_template(
     current_user: UserAccount = Depends(get_admin_user),
 ):
     _ensure_prompt_templates_seeded(db)
+    _assert_prompt_template_safe(data)
     category = db.query(PromptTemplateCategory).filter(
         PromptTemplateCategory.key == data.category_key,
         PromptTemplateCategory.is_active == True,
@@ -1870,6 +2027,7 @@ async def update_prompt_template(
     current_user: UserAccount = Depends(get_admin_user),
 ):
     _ensure_prompt_templates_seeded(db)
+    _assert_prompt_template_safe(data)
     template = db.query(PromptTemplate).filter(PromptTemplate.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="提示词模板不存在")
@@ -2586,6 +2744,30 @@ async def generate_full_case(
     }
 
 
+@router.post("/generation-events", summary="记录生成后行为事件")
+async def create_generation_action_event(
+    data: GenerationActionEventCreate,
+    db: Session = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
+):
+    if data.event_type not in {"edited", "saved", "teleprompter_opened"}:
+        raise HTTPException(status_code=400, detail="事件类型不支持")
+    history = db.query(GenerationHistory).filter(GenerationHistory.id == data.history_id).first()
+    if not history:
+        raise HTTPException(status_code=404, detail="生成历史不存在")
+    event = GenerationActionEvent(
+        user_id=current_user.id,
+        history_id=data.history_id,
+        event_type=data.event_type,
+        content_type=data.content_type,
+        metadata_json=json.dumps(data.metadata or {}, ensure_ascii=False),
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return {"code": 0, "data": event.to_dict(), "message": "事件已记录"}
+
+
 # ─── 2.5 栏目库与策略能力 ─────────────────────────────────────
 
 @router.get("/columns", summary="获取栏目库")
@@ -2740,8 +2922,21 @@ async def copilot_modify(data: ModifyRequest, db: Session = Depends(get_db)):
         "script": "口播文案",
         "video_prompts": "视频分镜提示词",
         "cover_prompt": "视频封面提示词",
+        "reversal_drama": "短剧分镜脚本",
     }
     content_type_label = content_type_map.get(data.content_type, data.content_type)
+
+    extra_context = ""
+    if data.content_type == "reversal_drama":
+        bits = []
+        if data.template_key:
+            bits.append(f"剧本类型：{data.template_key}")
+        if data.cast_summary:
+            bits.append(f"角色组：{data.cast_summary}")
+        if bits:
+            extra_context = "\n\n## 当前剧本上下文\n" + "\n".join(bits)
+
+    user_instruction = data.user_instruction + extra_context
 
     messages = [
         {"role": "system", "content": COPILOT_MODIFY_SYSTEM},
@@ -2749,7 +2944,7 @@ async def copilot_modify(data: ModifyRequest, db: Session = Depends(get_db)):
             content_type=content_type_label,
             current_content=data.current_content,
             persona_profile=persona_profile,
-            user_instruction=data.user_instruction,
+            user_instruction=user_instruction,
         )},
     ]
 
@@ -2888,23 +3083,190 @@ def _parse_reversal_drama_markdown(md: str) -> dict:
     }
 
 
-@router.post("/reversal-drama/generate", summary="生成职场反转剧分镜脚本")
+def _resolve_reversal_characters(
+    db: Session,
+    data: ReversalDramaRequest,
+    current_user: UserAccount,
+) -> tuple[list[dict], list[dict], str]:
+    """解析最终角色列表、快照与关系说明。"""
+    template = get_drama_template(db, data.template_key or "workplace_reversal")
+    relationship_hint = template.get("relationship_hint", "")
+    cast_snapshot: list[dict] = []
+
+    if data.characters and any((c.name or "").strip() for c in data.characters):
+        cast_snapshot = [c.model_dump() for c in data.characters if (c.name or "").strip()]
+        return cast_snapshot, cast_snapshot, relationship_hint
+
+    if data.cast_preset_id:
+        preset = (
+            db.query(DramaCastPreset)
+            .filter(
+                DramaCastPreset.id == data.cast_preset_id,
+                DramaCastPreset.user_id == current_user.id,
+                DramaCastPreset.is_active.is_(True),
+            )
+            .first()
+        )
+        if preset:
+            try:
+                cast_snapshot = json.loads(preset.characters_json or "[]")
+            except Exception:
+                cast_snapshot = []
+            if cast_snapshot:
+                relationship_hint = preset.relationship_hint or relationship_hint
+                return cast_snapshot, cast_snapshot, relationship_hint
+
+    return [], [], relationship_hint
+
+
+@router.get("/drama-templates", summary="获取短剧剧本类型模板列表")
+async def list_drama_script_templates(
+    db: Session = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
+):
+    _ = current_user
+    return {"code": 0, "data": list_drama_templates(db)}
+
+
+@router.get("/drama-casts", summary="获取当前用户角色组预设")
+async def list_drama_cast_presets(
+    db: Session = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
+):
+    records = (
+        db.query(DramaCastPreset)
+        .filter(DramaCastPreset.user_id == current_user.id, DramaCastPreset.is_active.is_(True))
+        .order_by(DramaCastPreset.is_default.desc(), DramaCastPreset.updated_at.desc())
+        .all()
+    )
+    return {"code": 0, "data": [record.to_dict() for record in records]}
+
+
+@router.post("/drama-casts", summary="创建角色组预设")
+async def create_drama_cast_preset(
+    data: DramaCastPresetPayload,
+    db: Session = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
+):
+    characters = [c.model_dump() for c in data.characters if (c.name or "").strip()]
+    if not characters:
+        raise HTTPException(status_code=400, detail="请至少填写一个有效角色")
+    if len(characters) > 6:
+        raise HTTPException(status_code=400, detail="角色组最多 6 人")
+
+    if data.is_default:
+        db.query(DramaCastPreset).filter(
+            DramaCastPreset.user_id == current_user.id,
+            DramaCastPreset.is_default.is_(True),
+        ).update({"is_default": False})
+
+    record = DramaCastPreset(
+        user_id=current_user.id,
+        name=data.name.strip(),
+        project_id=data.project_id,
+        characters_json=json.dumps(characters, ensure_ascii=False),
+        relationship_hint=data.relationship_hint.strip(),
+        is_default=data.is_default,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return {"code": 0, "data": record.to_dict(), "message": "角色组已保存"}
+
+
+@router.put("/drama-casts/{cast_id}", summary="更新角色组预设")
+async def update_drama_cast_preset(
+    cast_id: int,
+    data: DramaCastPresetPayload,
+    db: Session = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
+):
+    record = db.query(DramaCastPreset).filter(
+        DramaCastPreset.id == cast_id,
+        DramaCastPreset.user_id == current_user.id,
+        DramaCastPreset.is_active.is_(True),
+    ).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="角色组不存在")
+
+    characters = [c.model_dump() for c in data.characters if (c.name or "").strip()]
+    if not characters:
+        raise HTTPException(status_code=400, detail="请至少填写一个有效角色")
+    if len(characters) > 6:
+        raise HTTPException(status_code=400, detail="角色组最多 6 人")
+
+    if data.is_default:
+        db.query(DramaCastPreset).filter(
+            DramaCastPreset.user_id == current_user.id,
+            DramaCastPreset.is_default.is_(True),
+            DramaCastPreset.id != cast_id,
+        ).update({"is_default": False})
+
+    record.name = data.name.strip()
+    record.project_id = data.project_id
+    record.characters_json = json.dumps(characters, ensure_ascii=False)
+    record.relationship_hint = data.relationship_hint.strip()
+    record.is_default = data.is_default
+    db.commit()
+    db.refresh(record)
+    return {"code": 0, "data": record.to_dict(), "message": "角色组已更新"}
+
+
+@router.delete("/drama-casts/{cast_id}", summary="删除角色组预设")
+async def delete_drama_cast_preset(
+    cast_id: int,
+    db: Session = Depends(get_db),
+    current_user: UserAccount = Depends(get_current_user),
+):
+    record = db.query(DramaCastPreset).filter(
+        DramaCastPreset.id == cast_id,
+        DramaCastPreset.user_id == current_user.id,
+        DramaCastPreset.is_active.is_(True),
+    ).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="角色组不存在")
+    record.is_active = False
+    db.commit()
+    return {"code": 0, "message": "角色组已删除"}
+
+
+@router.post("/reversal-drama/generate", summary="生成短剧分镜脚本")
 async def generate_reversal_drama(
     data: ReversalDramaRequest,
     db: Session = Depends(get_db),
     current_user: UserAccount = Depends(get_current_user),
 ):
-    """职场反转剧编剧智能体 - 同步生成。
+    """短剧脚本工坊 - 同步生成。
 
-    输入：产品 + 痛点 + (可选)自定义人物
+    输入：剧本类型 + 产品 + 痛点 + (可选)角色组
     输出：raw_markdown + 结构化的 overview / scenes / ending_subtitle / checklist
     """
-    characters_block = build_characters_block(
-        [c.model_dump() for c in data.characters] if data.characters else None
+    template_key = data.template_key or "workplace_reversal"
+    template = get_drama_template(db, template_key)
+    pattern = (data.reversal_pattern or "auto").upper()
+    if pattern not in {"AUTO", "A", "B", "C"}:
+        pattern = "AUTO"
+    pattern_key = "auto" if pattern == "AUTO" else pattern
+
+    characters, cast_snapshot, relationship_hint = _resolve_reversal_characters(db, data, current_user)
+    characters_block = build_cast_block(
+        characters or None,
+        default_cast_prompt=template.get("default_cast_prompt", ""),
+        relationship_hint=relationship_hint,
+        template_key=template_key,
+    )
+    reversal_instruction = build_reversal_pattern_instruction(
+        template.get("reversal_patterns", []),
+        pattern_key,
+    )
+    system_prompt = build_drama_system_prompt(
+        template,
+        characters_block=characters_block,
+        reversal_pattern_instruction=reversal_instruction,
     )
 
     messages = [
-        {"role": "system", "content": REVERSAL_DRAMA_SYSTEM},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": REVERSAL_DRAMA_USER.format(
             product_name=data.product_name,
             product_function=data.product_function,
@@ -2912,6 +3274,7 @@ async def generate_reversal_drama(
             characters_block=characters_block,
             platform=data.platform or "视频号+抖音",
             duration=data.duration or "30-60秒",
+            reversal_pattern_instruction=reversal_instruction,
             extra_requirements=data.extra_requirements or "无",
         )},
     ]
@@ -2935,6 +3298,10 @@ async def generate_reversal_drama(
              or f"{data.product_name} · 反转剧")
     result = {
         "history_id": 0,
+        "template_key": template_key,
+        "template_name": template.get("name", ""),
+        "reversal_pattern": pattern_key,
+        "cast_snapshot": cast_snapshot,
         "raw_markdown": raw_markdown,
         **structured,
     }

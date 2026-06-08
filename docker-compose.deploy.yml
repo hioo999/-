@@ -1,0 +1,88 @@
+services:
+  ip-backend:
+    build: ./backend
+    image: ${AIP_IMAGE_PREFIX:-aip-system}-backend:${AIP_IMAGE_TAG:-latest}
+    container_name: ${AIP_CONTAINER_PREFIX:-aip-system}-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/ip_system.db}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@seaai.com.cn}
+      ADMIN_NAME: ${ADMIN_NAME:-Admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      SECRET_KEY: ${SECRET_KEY:-}
+      MODEL_GATEWAY_SECRET: ${MODEL_GATEWAY_SECRET:-}
+      WECHAT_CREDENTIAL_KEY: ${WECHAT_CREDENTIAL_KEY:-}
+      PLATFORM_UPLOAD_DIR: /app/data/uploads/platform_assets
+      PIXELLE_VIDEO_ROOT: /app/video_engine
+    ports:
+      - "${IP_BACKEND_BIND:-127.0.0.1}:${IP_BACKEND_PORT:-18000}:8000"
+    volumes:
+      - backend_data:/app/data
+      - video_engine_data:/app/video_engine/data
+      - video_engine_output:/app/video_engine/output
+      - ./backend/video_engine/config.yaml:/app/video_engine/config.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - aip_runtime
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  ip-frontend:
+    build: ./frontend
+    image: ${AIP_IMAGE_PREFIX:-aip-system}-frontend:${AIP_IMAGE_TAG:-latest}
+    container_name: ${AIP_CONTAINER_PREFIX:-aip-system}-frontend
+    restart: unless-stopped
+    ports:
+      - "${IP_FRONTEND_BIND:-127.0.0.1}:${IP_FRONTEND_PORT:-13000}:80"
+    networks:
+      - aip_runtime
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  ip-nginx:
+    image: nginx:1.25.4-alpine
+    container_name: ${AIP_CONTAINER_PREFIX:-aip-system}-nginx
+    restart: unless-stopped
+    ports:
+      - "${IP_PROXY_BIND:-127.0.0.1}:${IP_PROXY_PORT:-18080}:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - ip-backend
+      - ip-frontend
+    networks:
+      - aip_runtime
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  backend_data:
+    name: ${AIP_VOLUME_PREFIX:-aip-system}_backend_data
+  video_engine_data:
+    name: ${AIP_VOLUME_PREFIX:-aip-system}_video_engine_data
+  video_engine_output:
+    name: ${AIP_VOLUME_PREFIX:-aip-system}_video_engine_output
+
+networks:
+  aip_runtime:
+    name: ${AIP_NETWORK_NAME:-aip-system-runtime}
+    driver: bridge

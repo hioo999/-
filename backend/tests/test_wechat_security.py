@@ -16,6 +16,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from services.wechat_publisher import (
     WechatPublishError,
+    _normalize_image_content_type,
     _safe_render_api_base,
     _validate_public_url,
     encrypt_secret,
@@ -141,6 +142,10 @@ class WechatPublisherSecurityTest(unittest.TestCase):
         message = explain_wechat_error("40125", "invalid appsecret")
         self.assertIn("AppSecret", message)
         self.assertIn("40125", message)
+
+    def test_image_content_type_normalizes_common_jpeg_alias(self) -> None:
+        self.assertEqual(_normalize_image_content_type("image/jpg; charset=binary"), "image/jpeg")
+        self.assertEqual(_normalize_image_content_type("image/png"), "image/png")
 
     def test_idempotent_record_requires_key(self) -> None:
         class FakeDb:

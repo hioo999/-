@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import type { ToolKey } from './HomeToolCards.vue'
-
-type WorkspaceMode = 'home' | ToolKey
+import { computed } from 'vue'
+import { navModuleFromPath, navModulePathMap, modePathMap, type NavModule } from '../stores/workspace'
 
 interface ActiveUser {
   name?: string
@@ -12,55 +11,68 @@ interface ActiveUser {
 }
 
 interface NavItem {
+  id: NavModule
   label: string
-  mode: WorkspaceMode
-  group: 'overview' | 'produce' | 'publish' | 'system'
+  path: string
   title: string
   adminOnly?: boolean
 }
 
 const props = defineProps<{
-  workspaceMode: WorkspaceMode
+  currentPath: string
   currentUser?: ActiveUser
   isGuestUser: boolean
   isAdminUser: boolean
-  isGeneratingDrama: boolean
-  dramaGenerateReason: string
+  isGeneratingDrama?: boolean
+  dramaGenerateReason?: string
 }>()
 
 const emit = defineEmits<{
-  select: [mode: WorkspaceMode]
+  navigate: [path: string]
   logout: []
   generateDrama: []
+  requestLogin: []
 }>()
 
 const primaryNav: NavItem[] = [
-  { label: '首页', mode: 'home', group: 'overview', title: '首页' },
-  { label: '生产中心', mode: 'ip', group: 'produce', title: '生产中心' },
-  { label: '公众号排版', mode: 'wechat', group: 'publish', title: '公众号排版' },
-  { label: '设置', mode: 'models', group: 'system', title: '设置', adminOnly: true },
+  { id: 'overview', label: '概览', path: navModulePathMap.overview, title: '工作台概览' },
+  { id: 'production', label: '生产', path: navModulePathMap.production, title: '生产中心' },
+  { id: 'publish', label: '发布', path: navModulePathMap.publish, title: '内容发布' },
+  { id: 'settings', label: '设置', path: navModulePathMap.settings, title: '系统设置', adminOnly: true },
 ]
 
-const groupedNav: NavItem[] = [
-  { label: 'IP 档案', mode: 'sprint1', group: 'produce', title: 'IP 档案' },
-  { label: '小红书/口播', mode: 'platform', group: 'produce', title: '小红书/口播' },
-  { label: '反转剧编剧', mode: 'reversal', group: 'produce', title: '反转剧编剧' },
-  { label: '模型设置', mode: 'models', group: 'system', title: '模型设置', adminOnly: true },
-  { label: '提示词工具', mode: 'prompts', group: 'system', title: '提示词工具', adminOnly: true },
+const activeModule = computed(() => navModuleFromPath(props.currentPath))
+
+const productionShortcuts = [
+  { label: 'IP 档案', path: modePathMap.sprint1 },
+  { label: '反转剧编剧', path: modePathMap.reversal },
 ]
 
-function isGroupActive(group: NavItem['group']) {
-  if (props.workspaceMode === 'home') return group === 'overview'
-  return groupedNav.some((item) => item.group === group && item.mode === props.workspaceMode)
+const publishShortcuts = [
+  { label: '写公众号文章', path: `${modePathMap.ip}?tab=wechat` },
+  { label: '小红书/口播', path: `${modePathMap.ip}?tab=platform` },
+  { label: '直播台本生成', path: `${modePathMap.teleprompter}?tab=generator` },
+  { label: '在线提词播放', path: `${modePathMap.teleprompter}?tab=player` },
+]
+
+const settingsShortcuts = [
+  { label: '模型设置', path: modePathMap.models },
+  { label: '提示词工具', path: modePathMap.prompts, adminOnly: true },
+]
+
+function isNavActive(item: NavItem) {
+  return activeModule.value === item.id
 }
 
-function selectNav(item: NavItem) {
-  if (props.isGuestUser && item.mode !== 'teleprompter') {
-    emit('select', 'teleprompter')
-    return
-  }
-  if (item.adminOnly && !props.isAdminUser) return
-  emit('select', item.mode)
+function navigate(path: string) {
+  emit('navigate', path)
+}
+
+function shortcutItems(module: NavModule) {
+  if (module === 'production') return productionShortcuts
+  if (module === 'publish') return publishShortcuts
+  if (module === 'settings') return settingsShortcuts.filter((item) => !item.adminOnly || props.isAdminUser)
+  return []
 }
 </script>
 
@@ -68,56 +80,51 @@ function selectNav(item: NavItem) {
   <header class="workspace-header" role="banner">
     <div class="header-left">
       <button
-        v-if="workspaceMode !== 'home' && workspaceMode !== 'ip' && !isGuestUser"
+        v-if="currentPath !== '/' && !isGuestUser"
         class="btn btn-ghost btn-sm btn-back-home"
-        @click="emit('select', 'home')"
-      >返回首页</button>
+        @click="navigate('/')"
+      >返回概览</button>
       <div class="logo" aria-label="IP 全案工作台">
         <span class="logo-icon" aria-hidden="true">IP</span>
         <h1 class="logo-text">IP<span class="text-gradient">全案</span>工作台</h1>
       </div>
       <span class="badge badge-accent">v1.0</span>
 
-      <nav v-if="!isGuestUser" class="mode-switcher app-mode-tabs" aria-label="工作台一级导航">
+      <nav class="mode-switcher app-mode-tabs" aria-label="工作台一级导航">
         <button
           v-for="item in primaryNav.filter((nav) => !nav.adminOnly || isAdminUser)"
-          :key="item.mode"
+          :key="item.id"
           class="tab-item"
-          :class="{ active: item.mode === workspaceMode || isGroupActive(item.group) }"
-          :aria-current="item.mode === workspaceMode || isGroupActive(item.group) ? 'page' : undefined"
+          :class="{ active: isNavActive(item) }"
+          :aria-current="isNavActive(item) ? 'page' : undefined"
           :title="item.title"
-          @click="selectNav(item)"
+          @click="navigate(item.path)"
         >{{ item.label }}</button>
       </nav>
     </div>
 
     <div class="header-right">
-      <details v-if="!isGuestUser && isAdminUser" class="module-menu">
-        <summary class="btn btn-ghost btn-sm">更多</summary>
+      <details v-if="!isGuestUser && shortcutItems(activeModule).length" class="module-menu">
+        <summary class="btn btn-ghost btn-sm">快捷入口</summary>
         <div class="module-menu-panel" role="menu">
           <button
-            v-for="item in groupedNav.filter((nav) => !nav.adminOnly || isAdminUser)"
-            :key="item.mode"
+            v-for="item in shortcutItems(activeModule)"
+            :key="item.path"
             role="menuitem"
-            :class="{ active: workspaceMode === item.mode }"
-            @click="selectNav(item)"
+            :class="{ active: currentPath === item.path.split('?')[0] }"
+            @click="navigate(item.path)"
           >{{ item.label }}</button>
         </div>
       </details>
       <div v-if="currentUser" class="user-chip" :title="currentUser.email">
         <span>{{ currentUser.isGuest ? '游客' : currentUser.name }}</span>
       </div>
-      <span v-if="isGuestUser" class="guest-scope-chip">仅提词器可用</span>
-      <button
-        class="teleprompter-nav-btn"
-        :class="{ active: workspaceMode === 'teleprompter' }"
-        :aria-current="workspaceMode === 'teleprompter' ? 'page' : undefined"
-        title="打开独立在线提词器"
-        @click="emit('select', 'teleprompter')"
-      >提词器</button>
+      <button v-if="isGuestUser" class="guest-scope-chip" type="button" @click="emit('requestLogin')">
+        登录解锁全部功能
+      </button>
       <button v-if="currentUser" class="btn btn-ghost btn-sm" @click="emit('logout')">退出</button>
       <button
-        v-if="workspaceMode === 'reversal'"
+        v-if="currentPath === modePathMap.reversal"
         class="btn btn-primary"
         :title="dramaGenerateReason || '生成反转剧分镜脚本'"
         :disabled="isGeneratingDrama || Boolean(dramaGenerateReason)"
@@ -205,6 +212,9 @@ function selectNav(item: NavItem) {
 }
 
 .tab-item {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
   min-height: 38px;
   padding: 8px 14px;
   border: 0;
@@ -304,39 +314,11 @@ function selectNav(item: NavItem) {
 
 .guest-scope-chip {
   padding: 7px 11px;
-  border: 1px solid rgba(217, 119, 6, 0.22);
-  background: rgba(217, 119, 6, 0.08);
-  color: var(--color-warning);
-}
-
-.teleprompter-nav-btn {
-  min-height: 40px;
-  padding: 9px 15px;
-  border: 1px solid rgba(36, 87, 255, 0.2);
-  border-radius: 999px;
-  background: #eef3ff;
+  border: 1px solid rgba(36, 87, 255, 0.18);
+  background: rgba(36, 87, 255, 0.08);
   color: var(--color-accent-primary);
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
-  font-weight: 850;
-  line-height: 1;
-  white-space: nowrap;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
-  transition: transform var(--transition-normal), border-color var(--transition-normal), background var(--transition-normal), box-shadow var(--transition-normal);
-}
-
-.teleprompter-nav-btn:hover,
-.teleprompter-nav-btn.active {
-  border-color: rgba(36, 87, 255, 0.36);
-  background: #dfe9ff;
-  box-shadow: 0 10px 22px rgba(36, 87, 255, 0.12);
-  transform: translateY(-1px);
-}
-
-.teleprompter-nav-btn:focus-visible {
-  outline: 3px solid rgba(36, 87, 255, 0.22);
-  outline-offset: 3px;
 }
 
 @media (max-width: 1100px) {
@@ -352,8 +334,14 @@ function selectNav(item: NavItem) {
   }
 
   .mode-switcher {
+    flex: 1 0 100%;
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
   }
 }
 

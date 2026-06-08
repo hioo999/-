@@ -999,7 +999,13 @@ class PlatformAssetsTasksApiTest(unittest.TestCase):
         self.assertEqual(exported_with_assets.status_code, 200, exported_with_assets.text)
         self.assertGreaterEqual(len(exported_with_assets.json()["data"]["downloadManifest"]["imageAssets"]), 2)
 
-        package = self.client.get(f"/api/platform-contents/{content_id}/download-package", headers=self.owner_headers)
+        remote_png_bytes = b"\x89PNG\r\n\x1a\n" + b"remote-xhs-cover"
+
+        async def fake_download_image(url: str, fallback_name: str):
+            return "xhs-cover.png", "image/png", remote_png_bytes
+
+        with patch("api.platform_routes._download_image", side_effect=fake_download_image):
+            package = self.client.get(f"/api/platform-contents/{content_id}/download-package", headers=self.owner_headers)
         self.assertEqual(package.status_code, 200, package.text)
         with zipfile.ZipFile(BytesIO(package.content)) as archive:
             names = archive.namelist()
@@ -1008,6 +1014,12 @@ class PlatformAssetsTasksApiTest(unittest.TestCase):
             self.assertIn("remote-images.json", names)
             self.assertTrue(any(name.startswith("images/") for name in names))
             self.assertEqual(archive.read("copy.txt").decode(), "更新正文")
+            remote_log = json.loads(archive.read("remote-images.json").decode())
+            packed_entries = [item for item in remote_log if item.get("status") == "packed"]
+            self.assertTrue(packed_entries, remote_log)
+            packed_paths = {item["zipPath"] for item in packed_entries}
+            self.assertTrue(any(name in packed_paths for name in names))
+            self.assertEqual(archive.read(next(iter(packed_paths))), remote_png_bytes)
 
         bad_upload = self.client.post(
             f"/api/platform-contents/{content_id}/image-upload",

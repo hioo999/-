@@ -39,7 +39,7 @@ from models.persona import (
 from services.ai_service import AIProviderError, AIService, safe_parse_ai_json
 from services.content_parser import extract_from_text, extract_from_url
 from services.model_security import decrypt_secret, encrypt_secret
-from services.wechat_publisher import WechatPublishError, _validate_public_url, sanitize_wechat_html
+from services.wechat_publisher import WechatPublishError, _download_image, _validate_public_url, sanitize_wechat_html
 from video_engine import ENGINE_ROOT, runtime as video_runtime
 
 
@@ -1709,12 +1709,49 @@ async def export_platform_content(content_id: int, db: Session = Depends(get_db)
     return {"code": 0, "data": data}
 
 
+def _is_packable_remote_url(url: str) -> bool:
+    return bool(url) and url.startswith(("http://", "https://"))
+
+
+async def _pack_remote_image_into_zip(
+    package: zipfile.ZipFile,
+    *,
+    url: str,
+    arc_prefix: str,
+    fallback_name: str,
+    remote_images: list[dict[str, Any]],
+    asset_id: int | None = None,
+    title: str = "",
+) -> None:
+    try:
+        filename, _content_type, content = await _download_image(url, fallback_name)
+        safe_name = _safe_upload_filename(filename)
+        arcname = f"images/{arc_prefix}_{safe_name}"
+        package.writestr(arcname, content)
+        remote_images.append({
+            "assetId": asset_id,
+            "title": title,
+            "url": url,
+            "status": "packed",
+            "zipPath": arcname,
+        })
+    except Exception as exc:
+        remote_images.append({
+            "assetId": asset_id,
+            "title": title,
+            "url": url,
+            "status": "failed",
+            "error": str(exc) or exc.__class__.__name__,
+        })
+
+
 @router.get("/platform-contents/{content_id}/download-package", summary="下载平台内容 ZIP 包")
 async def download_platform_content_package(content_id: int, db: Session = Depends(get_db), user: UserAccount = Depends(get_current_user)):
     content = get_platform_content(db, content_id, user)
     data = _platform_content_export_payload(db, user, content)
     image_assets: list[UnifiedAsset] = data.pop("_imageAssetModels", [])
     remote_images: list[dict[str, Any]] = []
+    packed_urls: set[str] = set()
     buffer = BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as package:
         package.writestr("copy.txt", data["copyText"] or "")
@@ -1728,8 +1765,44 @@ async def download_platform_content_package(content_id: int, db: Session = Depen
             if path:
                 filename = _safe_upload_filename(str(metadata.get("originalFilename") or path.name))
                 package.write(path, arcname=f"images/{asset.id}_{filename}")
-            elif asset.url:
-                remote_images.append({"assetId": asset.id, "title": asset.title, "url": asset.url})
+                continue
+            asset_url = str(asset.url or "").strip()
+            if _is_packable_remote_url(asset_url) and asset_url not in packed_urls:
+                packed_urls.add(asset_url)
+                await _pack_remote_image_into_zip(
+                    package,
+                    url=asset_url,
+                    arc_prefix=str(asset.id),
+                    fallback_name=f"asset_{asset.id}.jpg",
+                    remote_images=remote_images,
+                    asset_id=asset.id,
+                    title=asset.title or "",
+                )
+            elif asset_url:
+                remote_images.append({
+                    "assetId": asset.id,
+                    "title": asset.title,
+                    "url": asset_url,
+                    "status": "skipped",
+                    "reason": "no_local_file",
+                })
+        image_slots = data.get("downloadManifest", {}).get("imageSlots", [])
+        if isinstance(image_slots, list):
+            for index, slot in enumerate(image_slots):
+                if not isinstance(slot, dict):
+                    continue
+                slot_url = str(slot.get("imageUrl") or "").strip()
+                if not _is_packable_remote_url(slot_url) or slot_url in packed_urls:
+                    continue
+                packed_urls.add(slot_url)
+                await _pack_remote_image_into_zip(
+                    package,
+                    url=slot_url,
+                    arc_prefix=f"slot{index}",
+                    fallback_name=f"slot_{index}.jpg",
+                    remote_images=remote_images,
+                    title=str(slot.get("purpose") or slot.get("altText") or f"slot_{index}"),
+                )
         package.writestr("remote-images.json", dumps(remote_images))
     filename = f"{_safe_package_filename(content.title or content.platform)}.zip"
     return Response(

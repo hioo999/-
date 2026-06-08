@@ -1,5 +1,6 @@
 <script setup lang="ts">
-export type ToolKey = 'ip' | 'sprint1' | 'platform' | 'reversal' | 'teleprompter' | 'wechat' | 'models' | 'prompts'
+export type { ToolKey } from '../stores/workspace'
+import type { ToolKey } from '../stores/workspace'
 
 interface HomeNavItem {
   title: string
@@ -11,10 +12,12 @@ const emit = defineEmits<{
   select: [key: ToolKey]
 }>()
 
+/** 兼容旧入口，新首页请使用 HomeDashboard */
 const homeNavItems: HomeNavItem[] = [
   { title: '生产中心', key: 'ip', tone: 'primary' },
   { title: 'IP 档案', key: 'sprint1', tone: 'plain' },
   { title: '小红书/口播', key: 'platform', tone: 'plain' },
+  { title: '直播提词器', key: 'teleprompter', tone: 'plain' },
   { title: '公众号排版', key: 'wechat', tone: 'plain' },
   { title: '反转剧编剧', key: 'reversal', tone: 'plain' },
 ]
@@ -78,7 +81,7 @@ const homeNavItems: HomeNavItem[] = [
 
 .home-nav-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -122,40 +125,15 @@ const homeNavItems: HomeNavItem[] = [
   background: linear-gradient(135deg, #1d4ed8, #1e40af);
 }
 
-.home-nav-card:focus-visible {
-  outline: 3px solid rgba(36, 87, 255, 0.22);
-  outline-offset: 3px;
-}
-
 @media (max-width: 900px) {
-  .home-nav {
-    min-height: auto;
-    align-content: start;
-  }
-
   .home-nav-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 560px) {
-  .home-nav {
-    gap: 20px;
-  }
-
   .home-nav-grid {
     grid-template-columns: 1fr;
-  }
-
-  .home-nav-card {
-    min-height: 96px;
-    border-radius: 22px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .home-nav-card {
-    transition: none;
   }
 }
 </style>

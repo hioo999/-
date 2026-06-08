@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { ToolKey } from '../components/HomeToolCards.vue'
+import type { ToolKey } from '../stores/workspace'
 
 export interface DashboardOverview {
   ipCompleteness: {

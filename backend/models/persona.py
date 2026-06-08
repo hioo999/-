@@ -169,6 +169,94 @@ class ReversalDramaHistory(Base):
         }
 
 
+class DramaScriptTemplate(Base):
+    """短剧脚本类型模板（系统内置 + 后续可运营）。"""
+    __tablename__ = "drama_script_templates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(80), nullable=False, unique=True, index=True)
+    name = Column(String(120), nullable=False)
+    description = Column(Text, default="")
+    genre_prompt = Column(Text, default="")
+    structure_prompt = Column(Text, default="")
+    reversal_patterns_json = Column(Text, default="[]")
+    style_prompt = Column(Text, default="")
+    output_format_prompt = Column(Text, default="")
+    default_cast_prompt = Column(Text, default="")
+    default_cast_json = Column(Text, default="[]")
+    relationship_hint = Column(Text, default="")
+    is_active = Column(Boolean, default=True, index=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def _load_json(self, value: str, fallback):
+        import json
+        try:
+            return json.loads(value or "")
+        except Exception:
+            return fallback
+
+    def to_prompt_dict(self) -> dict:
+        return {
+            "key": self.key,
+            "name": self.name,
+            "description": self.description,
+            "genre_prompt": self.genre_prompt or "",
+            "structure_prompt": self.structure_prompt or "",
+            "reversal_patterns": self._load_json(self.reversal_patterns_json, []),
+            "style_prompt": self.style_prompt or "",
+            "output_format_prompt": self.output_format_prompt or "",
+            "default_cast_prompt": self.default_cast_prompt or "",
+            "default_cast": self._load_json(self.default_cast_json, []),
+            "relationship_hint": self.relationship_hint or "",
+        }
+
+    def to_dict(self) -> dict:
+        data = self.to_prompt_dict()
+        data.update({
+            "templateId": self.id,
+            "sortOrder": self.sort_order,
+            "isActive": self.is_active,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
+        })
+        return data
+
+
+class DramaCastPreset(Base):
+    """用户级短剧角色组预设。"""
+    __tablename__ = "drama_cast_presets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("user_accounts.id"), nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    project_id = Column(Integer, default=0, index=True)
+    characters_json = Column(Text, default="[]")
+    relationship_hint = Column(Text, default="")
+    is_default = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self) -> dict:
+        import json
+        try:
+            characters = json.loads(self.characters_json or "[]")
+        except Exception:
+            characters = []
+        return {
+            "castPresetId": self.id,
+            "name": self.name,
+            "projectId": self.project_id,
+            "characters": characters,
+            "relationshipHint": self.relationship_hint,
+            "isDefault": self.is_default,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class GenerationHistory(Base):
     """生成历史记录表
 
@@ -223,6 +311,39 @@ class GenerationHistory(Base):
             "generation_params_json": self.generation_params_json,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class GenerationActionEvent(Base):
+    """生成后关键行为事件。
+
+    用于按提示词模板复盘生成后的编辑、定稿保存、进入提词器等转化。
+    """
+    __tablename__ = "generation_action_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("user_accounts.id"), nullable=False, index=True)
+    history_id = Column(Integer, ForeignKey("generation_history.id"), nullable=False, index=True)
+    event_type = Column(String(60), nullable=False, index=True)
+    content_type = Column(String(60), default="", index=True)
+    metadata_json = Column(Text, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    def to_dict(self) -> dict:
+        import json
+
+        try:
+            metadata = json.loads(self.metadata_json or "{}")
+        except Exception:
+            metadata = {}
+        return {
+            "eventId": self.id,
+            "userId": self.user_id,
+            "historyId": self.history_id,
+            "eventType": self.event_type,
+            "contentType": self.content_type,
+            "metadata": metadata,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -1147,6 +1268,123 @@ class TeleprompterDraft(Base):
             data["content"] = self.content
             data["settings"] = settings
         return data
+
+
+class TeleprompterQueue(Base):
+    """用户级提词器多文案队列。"""
+    __tablename__ = "teleprompter_queues"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("user_accounts.id"), nullable=False, unique=True, index=True)
+    active_script_id = Column(String(120), default="", comment="当前激活的本地文案 ID")
+    scripts_json = Column(Text, default="[]", comment="多篇口播文案队列 JSON")
+    settings_json = Column(Text, default="{}", comment="提词器全局设置 JSON")
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self) -> dict:
+        import json
+
+        try:
+            scripts = json.loads(self.scripts_json or "[]")
+        except Exception:
+            scripts = []
+        try:
+            settings = json.loads(self.settings_json or "{}")
+        except Exception:
+            settings = {}
+
+        return {
+            "queueId": self.id,
+            "activeScriptId": self.active_script_id,
+            "scripts": scripts,
+            "settings": settings,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class LiveTeleprompterScript(Base):
+    """直播 HTML 台本生成历史。"""
+    __tablename__ = "live_teleprompter_scripts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("user_accounts.id"), nullable=False, index=True)
+    title = Column(String(120), default="直播专场台本", index=True)
+    template_key = Column(String(80), default="general_sales", index=True)
+    request_json = Column(Text, default="{}")
+    result_json = Column(Text, default="{}")
+    plain_text = Column(Text, default="")
+    html_content = Column(Text, default="")
+    word_count = Column(Integer, default=0)
+    section_count = Column(Integer, default=0)
+    status = Column(String(40), default="generated", index=True)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self, include_content: bool = False) -> dict:
+        import json
+
+        def load(value: str, fallback):
+            try:
+                return json.loads(value or "")
+            except Exception:
+                return fallback
+
+        data = {
+            "scriptId": self.id,
+            "title": self.title,
+            "templateKey": self.template_key,
+            "wordCount": self.word_count,
+            "sectionCount": self.section_count,
+            "status": self.status,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if include_content:
+            data.update({
+                "request": load(self.request_json, {}),
+                "result": load(self.result_json, {}),
+                "plainText": self.plain_text,
+                "html": self.html_content,
+            })
+        return data
+
+
+class LiveTeleprompterTemplateRecord(Base):
+    """直播台本模板后台配置。"""
+    __tablename__ = "live_teleprompter_templates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("user_accounts.id"), nullable=False, index=True)
+    key = Column(String(80), nullable=False, unique=True, index=True)
+    name = Column(String(120), nullable=False)
+    description = Column(Text, default="")
+    config_json = Column(Text, default="{}")
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self) -> dict:
+        import json
+
+        try:
+            config = json.loads(self.config_json or "{}")
+        except Exception:
+            config = {}
+        return {
+            "templateId": self.id,
+            "key": self.key,
+            "name": self.name,
+            "description": self.description,
+            **config,
+            "isCustom": True,
+            "isActive": self.is_active,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
+        }
 
 
 class WechatAccount(Base):

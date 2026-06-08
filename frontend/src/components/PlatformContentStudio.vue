@@ -46,13 +46,15 @@ type InputMode = 'topic' | 'url' | 'text'
 const props = defineProps<{
   initialTitle?: string
   initialContent?: string
+  initialInputMode?: InputMode
+  initialSourceUrl?: string
   initialProjectId?: number
   initialTopicId?: number
   currentUser?: { is_admin?: boolean }
 }>()
 
 const mode = ref<PlatformMode>('xiaohongshu')
-const inputMode = ref<InputMode>('topic')
+const inputMode = ref<InputMode>(props.initialInputMode || 'topic')
 const feedback = ref<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
 const isGenerating = ref(false)
 const isSaving = ref(false)
@@ -93,9 +95,9 @@ const projectForm = reactive({
 
 const generateForm = reactive({
   topicTitle: props.initialTitle || '',
-  theme: props.initialTitle || '',
-  sourceUrl: '',
-  rawText: props.initialContent || '',
+  theme: props.initialInputMode === 'topic' ? props.initialContent || props.initialTitle || '' : props.initialTitle || '',
+  sourceUrl: props.initialInputMode === 'url' ? props.initialSourceUrl || props.initialContent || '' : '',
+  rawText: props.initialInputMode === 'text' ? props.initialContent || '' : '',
   extraRequirements: '',
 })
 
@@ -143,12 +145,38 @@ const storyboardForm = reactive<StoryboardRecordData>({
   status: 'draft',
 })
 
+const platformCards = [
+  {
+    key: 'xiaohongshu' as PlatformMode,
+    title: '小红书创作',
+    badge: '图文',
+    summary: '生成图文笔记、首图和多图提示词，适合种草与干货分享。',
+    nextStep: '生成后可编辑正文、下载图片清单，或继续打磨配图。',
+  },
+  {
+    key: 'douyin' as PlatformMode,
+    title: '抖音口播',
+    badge: '口播',
+    summary: '从主题或素材生成短视频口播稿，直接进入提词器录制。',
+    nextStep: '生成后建议导入提词器，或继续拆分分镜做短大片。',
+  },
+  {
+    key: 'shipinhao' as PlatformMode,
+    title: '视频号口播',
+    badge: '口播',
+    summary: '面向视频号语气的口播脚本，强调观点表达与转化引导。',
+    nextStep: '生成后可复制导出、导入提词器，或绑定封面图资产。',
+  },
+]
+
 const platformMeta = computed(() => {
   if (mode.value === 'xiaohongshu') {
     return { label: '小红书创作', contentType: 'xiaohongshu_note', platform: 'xiaohongshu', templateType: 'xiaohongshu_note' }
   }
   return { label: mode.value === 'douyin' ? '抖音口播' : '视频号口播', contentType: 'short_video_script', platform: mode.value, templateType: 'short_video_script' }
 })
+
+const activePlatformCard = computed(() => platformCards.find((item) => item.key === mode.value) || platformCards[0])
 
 const canGenerate = computed(() => {
   if (isGenerating.value) return false
@@ -194,6 +222,7 @@ const statusLabelMap: Record<string, string> = {
   failed: '待处理',
   reserved: '待启用',
   active: '可用',
+  generated_with_fallback: '已生成',
 }
 
 const assetTypeLabelMap: Record<string, string> = {
@@ -238,6 +267,43 @@ watch(
   () => props.initialProjectId,
   (value) => {
     if (value && value !== selectedProjectId.value) selectedProjectId.value = value
+  }
+)
+
+watch(
+  () => props.initialInputMode,
+  (value) => {
+    if (!value) return
+    inputMode.value = value
+    if (value === 'topic') generateForm.theme = props.initialContent || props.initialTitle || ''
+    if (value === 'url') generateForm.sourceUrl = props.initialSourceUrl || props.initialContent || ''
+    if (value === 'text') generateForm.rawText = props.initialContent || ''
+  }
+)
+
+watch(
+  () => props.initialTitle,
+  (value) => {
+    if (!value?.trim()) return
+    generateForm.topicTitle = value
+    if (inputMode.value === 'topic' && !props.initialContent?.trim()) generateForm.theme = value
+  }
+)
+
+watch(
+  () => props.initialContent,
+  (value) => {
+    if (!value?.trim()) return
+    if (inputMode.value === 'text') generateForm.rawText = value
+    if (inputMode.value === 'topic') generateForm.theme = value
+    if (inputMode.value === 'url' && !props.initialSourceUrl?.trim()) generateForm.sourceUrl = value
+  }
+)
+
+watch(
+  () => props.initialSourceUrl,
+  (value) => {
+    if (inputMode.value === 'url') generateForm.sourceUrl = value || ''
   }
 )
 
@@ -751,17 +817,32 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
       <div class="hero-actions">
         <span v-if="hasRunningSupportItems" class="polling-chip">生成处理中</span>
         <button class="btn btn-ghost" :disabled="isPollingSupportData" @click="refreshSupportData">{{ isPollingSupportData ? '刷新中...' : '刷新资产' }}</button>
-        <button class="btn btn-primary" :disabled="!canGenerate" @click="handleGenerate">{{ isGenerating ? '生成中...' : `生成${platformMeta.label}` }}</button>
+        <button class="btn btn-primary" :disabled="isGenerating" @click="handleGenerate">{{ isGenerating ? '生成中...' : `生成${platformMeta.label}` }}</button>
       </div>
     </header>
 
     <div v-if="feedback" class="studio-feedback" :class="feedback.type">{{ feedback.message }}</div>
 
     <section class="studio-card generate-card">
-      <div class="mode-tabs" aria-label="平台类型">
-        <button :class="{ active: mode === 'xiaohongshu' }" @click="mode = 'xiaohongshu'">小红书创作</button>
-        <button :class="{ active: mode === 'douyin' }" @click="mode = 'douyin'">抖音口播</button>
-        <button :class="{ active: mode === 'shipinhao' }" @click="mode = 'shipinhao'">视频号口播</button>
+      <div class="platform-picker" aria-label="平台类型">
+        <button
+          v-for="card in platformCards"
+          :key="card.key"
+          class="platform-card"
+          :class="{ active: mode === card.key }"
+          type="button"
+          @click="mode = card.key"
+        >
+          <span class="platform-badge">{{ card.badge }}</span>
+          <strong>{{ card.title }}</strong>
+          <span>{{ card.summary }}</span>
+          <small>{{ card.nextStep }}</small>
+        </button>
+      </div>
+
+      <div v-if="activePlatformCard" class="platform-focus-tip">
+        <strong>当前平台：{{ activePlatformCard.title }}</strong>
+        <span>{{ activePlatformCard.nextStep }}</span>
       </div>
 
       <div class="generate-grid">
@@ -829,13 +910,15 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
             <span class="section-eyebrow">内容编辑</span>
             <h3>{{ currentContent ? currentContent.title : '等待生成内容' }}</h3>
             <p>{{ currentContent ? `${formatTaskType(currentContent.contentType)} · ${formatStatus(currentContent.status)}` : '生成小红书或口播后，可在这里编辑、复制和进入下一步工具。' }}</p>
+            <p v-if="currentContent" class="content-meta">{{ currentContent.platform }} · {{ currentContent.contentType }} · {{ currentContent.status }}</p>
           </div>
           <div class="card-actions">
             <button class="btn btn-ghost" :disabled="!currentContent || isSaving" @click="handleSaveContent">{{ isSaving ? '保存中...' : '保存' }}</button>
             <button class="btn btn-ghost" :disabled="!currentContent" @click="handleExport">复制/导出</button>
-            <button class="btn btn-ghost" :disabled="!currentContent" @click="handleDownloadPackage">下载内容</button>
-            <button class="btn btn-primary" :disabled="!currentContent || mode === 'xiaohongshu'" @click="handleImportTeleprompter">导入提词器</button>
+            <button class="btn btn-primary" :disabled="!currentContent" @click="handleDownloadPackage">下载 ZIP 包</button>
+            <button class="btn btn-ghost" :disabled="!currentContent || mode === 'xiaohongshu'" @click="handleImportTeleprompter">导入提词器</button>
           </div>
+          <p v-if="currentContent && imageSlots.length" class="download-hint">ZIP 包含文案、manifest、已上传本地图片；公网图片链接会写入 remote-images.json。</p>
         </div>
 
         <div v-if="currentContent" class="editor-grid">
@@ -925,7 +1008,7 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
           <article v-for="config in publishConfigs" :key="config.configId" class="compact-item">
             <span>{{ config.platform }} · {{ formatStatus(config.status) }}</span>
             <strong>{{ config.name }} · {{ config.accountLabel || '未填账号' }}</strong>
-            <small>{{ config.credentialsMasked ? '已完成授权' : '未完成授权' }}</small>
+            <small>{{ config.credentialsMasked ? '已完成授权' : '待配置授权' }}</small>
             <button class="mini-link danger" @click="handleDeletePublishConfig(config)">删除</button>
           </article>
         </div>
@@ -1090,35 +1173,106 @@ async function handleDeleteStoryboard(storyboard: StoryboardRecordData) {
   padding: 18px;
 }
 
-.mode-tabs {
-  display: inline-flex;
-  gap: 6px;
-  padding: 5px;
-  border-radius: 999px;
-  background: #eef2f7;
+.content-meta {
+  margin: 4px 0 0;
+  color: #94a3b8;
+  font-size: 12px;
 }
 
-.mode-tabs button,
+.download-hint {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.platform-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.platform-card,
 .content-open-btn,
 .mini-link {
   border: 0;
   font: inherit;
   cursor: pointer;
+  text-align: left;
 }
 
-.mode-tabs button {
-  padding: 9px 14px;
+.platform-card {
+  display: grid;
+  gap: 8px;
+  min-height: 148px;
+  padding: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 22px;
+  background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+  color: #0f172a;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.platform-card:hover,
+.platform-card.active {
+  border-color: rgba(37, 99, 235, 0.42);
+  box-shadow: 0 16px 36px rgba(37, 99, 235, 0.1);
+  transform: translateY(-1px);
+}
+
+.platform-card.active {
+  background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+}
+
+.platform-badge {
+  width: fit-content;
+  padding: 4px 10px;
   border-radius: 999px;
-  background: transparent;
-  color: #475569;
-  font-size: 13px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  font-size: 11px;
   font-weight: 900;
 }
 
-.mode-tabs button.active {
-  background: #eef3ff;
-  color: #2457ff;
-  box-shadow: inset 0 0 0 1px #dbe6ff;
+.platform-card strong {
+  font-size: 18px;
+  font-weight: 950;
+  letter-spacing: -0.03em;
+}
+
+.platform-card span,
+.platform-card small {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.platform-card small {
+  color: #2563eb;
+  font-weight: 800;
+}
+
+.platform-focus-tip {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-top: 14px;
+  padding: 12px 16px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 16px;
+  background: rgba(239, 246, 255, 0.72);
+}
+
+.platform-focus-tip strong {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.platform-focus-tip span {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .generate-grid,
@@ -1364,6 +1518,15 @@ label {
 }
 
 @media (max-width: 1100px) {
+  .platform-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-focus-tip {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .generate-grid,
   .studio-layout,
   .studio-grid {

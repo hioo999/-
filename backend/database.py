@@ -1,6 +1,8 @@
 """数据库配置与会话管理"""
 
 import os
+import subprocess
+from pathlib import Path
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
 
@@ -24,18 +26,39 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+def _run_alembic_upgrade() -> None:
+    """在 MySQL/PostgreSQL 等正式库上执行 Alembic 迁移到 head。"""
+    backend_dir = Path(__file__).resolve().parent
+    result = subprocess.run(
+        ["alembic", "-c", str(backend_dir / "alembic.ini"), "upgrade", "head"],
+        cwd=str(backend_dir),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "未知错误").strip()
+        raise RuntimeError(f"Alembic 迁移失败：{detail}")
+
+
 def init_db():
     """初始化数据库，创建所有表"""
+    if os.getenv("ALEMBIC_UPGRADE_ON_START", "").lower() in {"1", "true", "yes"}:
+        _run_alembic_upgrade()
     Base.metadata.create_all(bind=engine)
     if os.getenv("DB_SCHEMA_STARTUP_CHECK", "").lower() in {"1", "true", "yes"}:
         _assert_non_sqlite_schema_ready()
     _ensure_user_account_columns()
     _ensure_generation_history_columns()
     _ensure_prompt_template_columns()
+    _ensure_generation_action_event_columns()
     _ensure_ai_model_config_columns()
     _ensure_platform_restructure_columns()
     _ensure_teleprompter_draft_columns()
+    _ensure_live_teleprompter_script_columns()
+    _ensure_live_teleprompter_template_columns()
     _ensure_wechat_columns()
+    _ensure_drama_studio_tables()
     _ensure_admin_account()
 
 
@@ -93,6 +116,7 @@ def _required_existing_columns() -> dict[str, set[str]]:
             "default_params_json",
             "default_model_config_id",
         },
+        "generation_action_events": {"user_id", "history_id", "event_type", "content_type", "metadata_json", "created_at"},
         "ai_model_configs": {"user_id", "gateway_id", "recommendation_label", "recommendation_reason", "risk_note", "last_seen_at"},
         "wechat_draft_records": {
             "idempotency_key",
@@ -126,6 +150,31 @@ def _required_existing_columns() -> dict[str, set[str]]:
             "word_count",
             "paragraph_count",
             "status",
+            "is_active",
+            "created_at",
+            "updated_at",
+        },
+        "live_teleprompter_scripts": {
+            "user_id",
+            "title",
+            "template_key",
+            "request_json",
+            "result_json",
+            "plain_text",
+            "html_content",
+            "word_count",
+            "section_count",
+            "status",
+            "is_active",
+            "created_at",
+            "updated_at",
+        },
+        "live_teleprompter_templates": {
+            "user_id",
+            "key",
+            "name",
+            "description",
+            "config_json",
             "is_active",
             "created_at",
             "updated_at",
@@ -219,6 +268,28 @@ def _ensure_prompt_template_columns():
             for name, ddl in columns.items():
                 if name not in existing:
                     conn.execute(text(f"ALTER TABLE prompt_templates ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_generation_action_event_columns():
+    """补齐生成后行为事件表，支持模板效果数据闭环。"""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    inspector = inspect(engine)
+    if "generation_action_events" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("generation_action_events")}
+    columns = {
+        "user_id": "INTEGER DEFAULT 0",
+        "history_id": "INTEGER DEFAULT 0",
+        "event_type": "VARCHAR(60) DEFAULT ''",
+        "content_type": "VARCHAR(60) DEFAULT ''",
+        "metadata_json": "TEXT DEFAULT '{}'",
+        "created_at": "DATETIME",
+    }
+    with engine.begin() as conn:
+        for name, ddl in columns.items():
+            if name not in existing:
+                conn.execute(text(f"ALTER TABLE generation_action_events ADD COLUMN {name} {ddl}"))
 
 
 def _ensure_ai_model_config_columns():
@@ -352,6 +423,67 @@ def _ensure_teleprompter_draft_columns():
         for name, ddl in columns.items():
             if name not in existing:
                 conn.execute(text(f"ALTER TABLE teleprompter_drafts ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_live_teleprompter_script_columns():
+    """补齐直播 HTML 台本历史字段，兼容旧 SQLite 开发库。"""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    inspector = inspect(engine)
+    if "live_teleprompter_scripts" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("live_teleprompter_scripts")}
+    columns = {
+        "user_id": "INTEGER DEFAULT 0",
+        "title": "VARCHAR(120) DEFAULT '直播专场台本'",
+        "template_key": "VARCHAR(80) DEFAULT 'general_sales'",
+        "request_json": "TEXT DEFAULT '{}'",
+        "result_json": "TEXT DEFAULT '{}'",
+        "plain_text": "TEXT DEFAULT ''",
+        "html_content": "TEXT DEFAULT ''",
+        "word_count": "INTEGER DEFAULT 0",
+        "section_count": "INTEGER DEFAULT 0",
+        "status": "VARCHAR(40) DEFAULT 'generated'",
+        "is_active": "BOOLEAN DEFAULT 1",
+        "created_at": "DATETIME",
+        "updated_at": "DATETIME",
+    }
+    with engine.begin() as conn:
+        for name, ddl in columns.items():
+            if name not in existing:
+                conn.execute(text(f"ALTER TABLE live_teleprompter_scripts ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_live_teleprompter_template_columns():
+    """补齐直播台本模板管理字段，兼容旧 SQLite 开发库。"""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    inspector = inspect(engine)
+    if "live_teleprompter_templates" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("live_teleprompter_templates")}
+    columns = {
+        "user_id": "INTEGER DEFAULT 0",
+        "key": "VARCHAR(80) DEFAULT ''",
+        "name": "VARCHAR(120) DEFAULT ''",
+        "description": "TEXT DEFAULT ''",
+        "config_json": "TEXT DEFAULT '{}'",
+        "is_active": "BOOLEAN DEFAULT 1",
+        "created_at": "DATETIME",
+        "updated_at": "DATETIME",
+    }
+    with engine.begin() as conn:
+        for name, ddl in columns.items():
+            if name not in existing:
+                conn.execute(text(f"ALTER TABLE live_teleprompter_templates ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_drama_studio_tables():
+    """初始化短剧脚本工坊表并 seed 内置模板。"""
+    from services.drama_script_service import ensure_drama_templates_seeded
+
+    with SessionLocal() as db:
+        ensure_drama_templates_seeded(db)
 
 
 def get_db() -> Session:

@@ -68,18 +68,52 @@ interface SpeechRecognitionWindow extends Window {
 }
 
 type ThemeKey = 'dark' | 'warm' | 'contrast'
+type TeleprompterScriptStatus = 'todo' | 'recording' | 'done'
+type ReadingWidthMode = 'narrow' | 'standard' | 'wide'
+type EyeContactMode = 'natural' | 'camera' | 'distance'
+type CameraFocusPosition = 'top' | 'center' | 'leftTop' | 'rightTop'
+type RecordingMode = 'practice' | 'formal'
 
-interface SavedTeleprompterState {
+interface TeleprompterScriptItem {
+  id: string
   title: string
   text: string
+  status: TeleprompterScriptStatus
+  scrollTop: number
+  progress: number
+  cloudDraftId?: number | null
+  durationSeconds?: number
+  updatedAt: string
+}
+
+interface SavedTeleprompterSettings {
   speed: number
   fontSize: number
   lineHeight: number
   theme: ThemeKey
   mirror: boolean
   countdownEnabled: boolean
-  currentScrollPosition: number
-  updatedAt: string
+  readingWidthMode?: ReadingWidthMode
+  eyeContactMode?: EyeContactMode
+  cameraFocusPosition?: CameraFocusPosition
+  recordingMode?: RecordingMode
+}
+
+interface SavedTeleprompterState {
+  version?: number
+  activeScriptId?: string
+  scripts?: TeleprompterScriptItem[]
+  settings?: SavedTeleprompterSettings
+  title?: string
+  text?: string
+  speed?: number
+  fontSize?: number
+  lineHeight?: number
+  theme?: ThemeKey
+  mirror?: boolean
+  countdownEnabled?: boolean
+  currentScrollPosition?: number
+  updatedAt?: string
 }
 
 interface TeleprompterUser {
@@ -96,23 +130,22 @@ const props = defineProps<{
 
 const defaultText = `欢迎使用在线提词器。
 
-在左侧输入或上传你的口播文案，点击“开始”后，文案会按照设定速度自动滚动。
-
-操作提示：
-空格：播放 / 暂停
-鼠标点击提词区域：播放 / 暂停
-滚轮或方向键：上下微调文案位置
-翻页笔上一页 / 下一页：上翻 / 下翻一屏
-长按翻页笔上一页 / 下一页：减慢 / 加快滚动速度
-+ / - 或音量键：调整滚动速度
-Esc：退出全屏或暂停播放`
+在左侧添加或导入几篇口播文案，点击文案卡片切换录制。录完一篇后，可标记完成并进入下一篇。`
 
 const scriptTitle = ref('未命名提词稿')
 const scriptText = ref(defaultText)
+const scriptItems = ref<TeleprompterScriptItem[]>([
+  createScriptItem({ title: scriptTitle.value, text: scriptText.value }),
+])
+const activeScriptId = ref(scriptItems.value[0]?.id || '')
 const speed = ref(48)
 const fontSize = ref(52)
 const lineHeight = ref(1.65)
 const theme = ref<ThemeKey>('dark')
+const readingWidthMode = ref<ReadingWidthMode>('standard')
+const eyeContactMode = ref<EyeContactMode>('natural')
+const cameraFocusPosition = ref<CameraFocusPosition>('top')
+const recordingMode = ref<RecordingMode>('formal')
 const mirror = ref(false)
 const countdownEnabled = ref(true)
 const countdown = ref(0)
@@ -124,7 +157,7 @@ const isVoiceFollowing = ref(false)
 const isInteractionPaused = ref(false)
 const temporaryInteractionNote = ref('')
 const isFinishConfirmOpen = ref(false)
-const finishSummary = ref<{ durationSeconds: number; completionRate: number; wordCount: number } | null>(null)
+const finishSummary = ref<{ title: string; durationSeconds: number; completionRate: number; wordCount: number } | null>(null)
 const sessionStartedAt = ref<number | null>(null)
 const lastDraftSavedAt = ref('')
 const cloudDraftId = ref<number | null>(null)
@@ -133,6 +166,9 @@ const isCloudDraftSaving = ref(false)
 const isSourceScriptLoading = ref(false)
 const cloudDraftError = ref('')
 const cloudDrafts = ref<TeleprompterDraftSummary[]>([])
+const cloudDraftPage = ref(1)
+const cloudDraftPageSize = 20
+const cloudDraftTotal = ref(0)
 const isDraftListLoading = ref(false)
 const draftListError = ref('')
 const voiceSupported = ref(false)
@@ -181,6 +217,221 @@ let viewportDragState: {
 } | null = null
 let shouldSuppressViewportClick = false
 
+function createScriptId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
+  return `script-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function createScriptItem(params: Partial<TeleprompterScriptItem> = {}): TeleprompterScriptItem {
+  const text = params.text ?? ''
+  return {
+    id: params.id || createScriptId(),
+    title: (params.title || inferScriptTitle(text) || '未命名提词稿').slice(0, 50),
+    text,
+    status: params.status === 'recording' || params.status === 'done' ? params.status : 'todo',
+    scrollTop: typeof params.scrollTop === 'number' ? Math.max(0, params.scrollTop) : 0,
+    progress: typeof params.progress === 'number' ? clamp(params.progress, 0, 100) : 0,
+    cloudDraftId: typeof params.cloudDraftId === 'number' ? params.cloudDraftId : null,
+    durationSeconds: typeof params.durationSeconds === 'number' ? Math.max(0, params.durationSeconds) : undefined,
+    updatedAt: params.updatedAt || new Date().toISOString(),
+  }
+}
+
+function persistActiveScriptItem(overrides: Partial<TeleprompterScriptItem> = {}) {
+  const index = scriptItems.value.findIndex((item) => item.id === activeScriptId.value)
+  if (index < 0) return
+
+  const viewport = viewportRef.value
+  const current = scriptItems.value[index]
+  scriptItems.value[index] = {
+    ...current,
+    title: scriptTitle.value.trim() || '未命名提词稿',
+    text: scriptText.value,
+    scrollTop: Math.round(viewport?.scrollTop ?? current.scrollTop ?? 0),
+    progress: Math.round(scrollProgress.value),
+    cloudDraftId: cloudDraftId.value,
+    updatedAt: new Date().toISOString(),
+    ...overrides,
+  }
+}
+
+function hydrateActiveScriptItem(restorePosition = true) {
+  const item = activeScriptItem.value
+  if (!item) return
+
+  scriptTitle.value = item.title || '未命名提词稿'
+  scriptText.value = item.text || ''
+  cloudDraftId.value = item.cloudDraftId || null
+  currentSegmentIndex.value = -1
+  lastTranscript.value = ''
+  pendingVoiceMatchIndex.value = -1
+  pendingVoiceMatchCount.value = 0
+
+  nextTick(() => {
+    setViewportTop(restorePosition ? item.scrollTop || 0 : 0)
+    updateProgress()
+  })
+}
+
+function normalizeScriptItems(items: unknown): TeleprompterScriptItem[] {
+  if (!Array.isArray(items)) return []
+  return items
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const draft = item as Partial<TeleprompterScriptItem>
+      return createScriptItem({
+        ...draft,
+        id: typeof draft.id === 'string' && draft.id ? draft.id : createScriptId(),
+        title: typeof draft.title === 'string' ? draft.title : '未命名提词稿',
+        text: typeof draft.text === 'string' ? draft.text : '',
+      })
+    })
+    .filter((item): item is TeleprompterScriptItem => Boolean(item))
+}
+
+function replaceActiveScriptContent(title: string, text: string, restorePosition = false) {
+  const index = scriptItems.value.findIndex((item) => item.id === activeScriptId.value)
+  const nextItem = createScriptItem({
+    ...(index >= 0 ? scriptItems.value[index] : {}),
+    title: title || inferScriptTitle(text),
+    text,
+    status: 'todo',
+    scrollTop: 0,
+    progress: 0,
+    durationSeconds: undefined,
+    updatedAt: new Date().toISOString(),
+  })
+
+  if (index >= 0) {
+    scriptItems.value[index] = nextItem
+  } else {
+    scriptItems.value.push(nextItem)
+    activeScriptId.value = nextItem.id
+  }
+
+  hydrateActiveScriptItem(restorePosition)
+}
+
+function addScriptItem(text = '', title = '') {
+  persistActiveScriptItem()
+  const item = createScriptItem({
+    title: title || (text.trim() ? inferScriptTitle(text) : `口播文案 ${scriptItems.value.length + 1}`),
+    text,
+  })
+  scriptItems.value.push(item)
+  activeScriptId.value = item.id
+  finishSummary.value = null
+  hydrateActiveScriptItem(false)
+  message.value = text.trim() ? '已加入新的口播文案。' : '已新增空白口播文案。'
+  scheduleDraftSave()
+}
+
+function switchScriptItem(targetId: string) {
+  if (targetId === activeScriptId.value) return
+  if (!scriptItems.value.some((item) => item.id === targetId)) return
+
+  pause()
+  stopVoiceFollow(false)
+  persistActiveScriptItem()
+  activeScriptId.value = targetId
+  finishSummary.value = null
+  hydrateActiveScriptItem(true)
+  message.value = `已切换到：${activeScriptItem.value?.title || '未命名提词稿'}`
+  scheduleDraftSave()
+}
+
+function removeScriptItem(targetId: string) {
+  if (scriptItems.value.length <= 1) {
+    message.value = '至少保留一篇口播文案。'
+    return
+  }
+
+  const target = scriptItems.value.find((item) => item.id === targetId)
+  if (!target) return
+  if (!window.confirm(`确认删除「${target.title || '未命名提词稿'}」吗？`)) return
+
+  pause()
+  stopVoiceFollow(false)
+  const targetIndex = scriptItems.value.findIndex((item) => item.id === targetId)
+  scriptItems.value = scriptItems.value.filter((item) => item.id !== targetId)
+  if (activeScriptId.value === targetId) {
+    const nextItem = scriptItems.value[Math.min(targetIndex, scriptItems.value.length - 1)] || scriptItems.value[0]
+    activeScriptId.value = nextItem.id
+    hydrateActiveScriptItem(true)
+  }
+  message.value = '已删除口播文案。'
+  scheduleDraftSave()
+}
+
+function goToRelativeScriptItem(direction: 1 | -1) {
+  const nextIndex = clamp(activeScriptIndex.value + direction, 0, scriptItems.value.length - 1)
+  const nextItem = scriptItems.value[nextIndex]
+  if (!nextItem || nextItem.id === activeScriptId.value) return
+  switchScriptItem(nextItem.id)
+}
+
+function goToNextPendingScriptItem() {
+  const nextItem = scriptItems.value.slice(activeScriptIndex.value + 1).find((item) => item.status !== 'done')
+    || scriptItems.value.find((item) => item.status !== 'done')
+  if (!nextItem || nextItem.id === activeScriptId.value) return false
+  switchScriptItem(nextItem.id)
+  return true
+}
+
+function getScriptStatusLabel(status: TeleprompterScriptStatus) {
+  if (status === 'done') return '已完成'
+  if (status === 'recording') return '录制中'
+  return '待录'
+}
+
+function applyEyeContactMode(mode: EyeContactMode) {
+  eyeContactMode.value = mode
+  if (mode === 'camera') {
+    readingWidthMode.value = 'narrow'
+    if (fontSize.value > 64) fontSize.value = 64
+    if (lineHeight.value < 1.65) lineHeight.value = 1.65
+  } else if (mode === 'distance') {
+    readingWidthMode.value = 'wide'
+    if (fontSize.value < 64) fontSize.value = 64
+    if (lineHeight.value < 1.75) lineHeight.value = 1.75
+  } else {
+    readingWidthMode.value = 'standard'
+  }
+  message.value = `已切换到${eyeContactLabel.value}模式。`
+}
+
+function formatDuration(seconds?: number) {
+  const safeSeconds = Math.max(0, Math.round(seconds || 0))
+  const minutes = Math.floor(safeSeconds / 60)
+  const restSeconds = safeSeconds % 60
+  return `${minutes}:${String(restSeconds).padStart(2, '0')}`
+}
+
+function applyIncomingScriptText(text: string, messageText: string) {
+  const normalizedText = text.trim()
+  if (!normalizedText) return false
+
+  const existing = scriptItems.value.find((item) => item.text.trim() === normalizedText)
+  if (existing) {
+    switchScriptItem(existing.id)
+    message.value = messageText
+    return true
+  }
+
+  const onlyDefaultScript = scriptItems.value.length === 1
+    && (!scriptItems.value[0].text.trim() || scriptItems.value[0].text === defaultText)
+
+  if (onlyDefaultScript) {
+    replaceActiveScriptContent(inferScriptTitle(text), text, false)
+    message.value = messageText
+    return true
+  }
+
+  addScriptItem(text, inferScriptTitle(text))
+  message.value = messageText
+  return true
+}
+
 interface PromptSegment {
   index: number
   text: string
@@ -192,6 +443,18 @@ interface PromptSection {
   title: string
   segmentIndex: number
 }
+
+const activeScriptItem = computed(() => scriptItems.value.find((item) => item.id === activeScriptId.value) || scriptItems.value[0] || null)
+
+const activeScriptIndex = computed(() => Math.max(0, scriptItems.value.findIndex((item) => item.id === activeScriptId.value)))
+
+const hasNextScriptItem = computed(() => activeScriptIndex.value >= 0 && activeScriptIndex.value < scriptItems.value.length - 1)
+
+const doneScriptCount = computed(() => scriptItems.value.filter((item) => item.status === 'done').length)
+
+const scriptQueueLabel = computed(() => `${activeScriptIndex.value + 1}/${scriptItems.value.length}`)
+
+const hasMoreCloudDrafts = computed(() => cloudDrafts.value.length < cloudDraftTotal.value)
 
 const wordsCount = computed(() => {
   const englishWords = scriptText.value.match(/[A-Za-z0-9]+/g)?.length ?? 0
@@ -211,7 +474,7 @@ const isCloudDraftEnabled = computed(() => Boolean(props.currentUser?.token && !
 
 const saveStatusLabel = computed(() => {
   if (isSourceScriptLoading.value) return '正在加载来源脚本...'
-  if (isCloudDraftLoading.value) return '正在加载云端草稿...'
+  if (isCloudDraftLoading.value) return '正在加载历史口播...'
   if (isCloudDraftSaving.value) return '正在保存云端草稿...'
   if (cloudDraftError.value) return `${isCloudDraftEnabled.value ? '云端保存失败' : '本地模式'}：${cloudDraftError.value}`
   if (isCloudDraftEnabled.value && cloudDraftId.value) return lastDraftSavedAt.value ? `已云端保存 ${lastDraftSavedAt.value}` : '云端草稿待保存'
@@ -234,12 +497,45 @@ const currentSectionIndex = computed(() => {
 
 const finishDurationLabel = computed(() => {
   if (!finishSummary.value) return '0:00'
-  const minutes = Math.floor(finishSummary.value.durationSeconds / 60)
-  const seconds = finishSummary.value.durationSeconds % 60
-  return `${minutes}:${String(seconds).padStart(2, '0')}`
+  return formatDuration(finishSummary.value.durationSeconds)
 })
 
 const themeClass = computed(() => `theme-${theme.value}`)
+
+const readingWidthClass = computed(() => `reading-width-${readingWidthMode.value}`)
+
+const cameraFocusClass = computed(() => `camera-focus-${cameraFocusPosition.value}`)
+
+const eyeContactLabel = computed(() => {
+  if (eyeContactMode.value === 'camera') return '看镜头'
+  if (eyeContactMode.value === 'distance') return '远距离'
+  return '自然'
+})
+
+const recordingModeLabel = computed(() => recordingMode.value === 'formal' ? '正式录制' : '练习模式')
+
+const finishModalDescription = computed(() => recordingMode.value === 'formal'
+  ? '当前脚本、显示设置和播放位置会自动保存，正式录制结束后可标记完成并进入下一篇。'
+  : '当前脚本、显示设置和播放位置会自动保存，练习结束只保留进度，不会标记文案完成。')
+
+const teleprompterReadinessChecks = computed(() => [
+  { label: '文案已准备', passed: Boolean(scriptText.value.trim()) && !isScriptTooLong.value },
+  { label: '阅读区已居中', passed: readingWidthMode.value !== 'wide' || fontSize.value >= 44 },
+  { label: '字号适合录制', passed: fontSize.value >= 36 && fontSize.value <= 82 },
+  { label: '倒计时已开启', passed: countdownEnabled.value },
+  { label: '语音跟读可用', passed: voiceSupported.value },
+])
+
+const teleprompterRiskTips = computed(() => {
+  const tips: string[] = []
+  if (readingWidthMode.value === 'wide' && fontSize.value < 44) tips.push('当前阅读区偏宽且字号偏小，录制时眼神可能左右移动。')
+  if (fontSize.value > 82) tips.push('字号偏大，长句可能换行频繁，建议切到“远距离”或调低字号。')
+  if (!countdownEnabled.value && recordingMode.value === 'formal') tips.push('正式录制建议开启倒计时，避免开头手忙脚乱。')
+  if (scriptLength.value > MAX_SCRIPT_LENGTH * 0.85) tips.push('当前文案接近长度上限，建议拆成多篇队列录制。')
+  return tips
+})
+
+const allReadinessPassed = computed(() => teleprompterReadinessChecks.value.every((item) => item.passed))
 
 const displayStyle = computed(() => ({
   fontSize: `${fontSize.value}px`,
@@ -262,15 +558,16 @@ watch(
   () => props.initialText,
   (initialText) => {
     if (!initialText?.trim() || initialText === scriptText.value) return
-    scriptText.value = initialText
-    resetContentPosition('viewport')
-    message.value = '已载入当前内容，可开启语音跟读。'
+    applyIncomingScriptText(initialText, '已加入当前口播文案，可点击左侧文案卡片切换录制。')
   }
 )
 
 watch(
-  [scriptTitle, scriptText, speed, fontSize, lineHeight, theme, mirror, countdownEnabled],
-  () => scheduleDraftSave(),
+  [scriptTitle, scriptText, speed, fontSize, lineHeight, theme, readingWidthMode, eyeContactMode, cameraFocusPosition, recordingMode, mirror, countdownEnabled],
+  () => {
+    persistActiveScriptItem()
+    scheduleDraftSave()
+  },
   { deep: false }
 )
 
@@ -287,23 +584,30 @@ function scheduleDraftSave() {
 
 function saveDraftState() {
   draftSaveTimer = null
-  const viewport = viewportRef.value
+  persistActiveScriptItem()
+  const updatedAt = new Date().toISOString()
   const state: SavedTeleprompterState = {
-    title: scriptTitle.value.trim() || '未命名提词稿',
-    text: scriptText.value,
-    speed: speed.value,
-    fontSize: fontSize.value,
-    lineHeight: lineHeight.value,
-    theme: theme.value,
-    mirror: mirror.value,
-    countdownEnabled: countdownEnabled.value,
-    currentScrollPosition: viewport?.scrollTop ?? 0,
-    updatedAt: new Date().toISOString(),
+    version: 2,
+    activeScriptId: activeScriptId.value,
+    scripts: scriptItems.value,
+    settings: {
+      speed: speed.value,
+      fontSize: fontSize.value,
+      lineHeight: lineHeight.value,
+      theme: theme.value,
+      readingWidthMode: readingWidthMode.value,
+      eyeContactMode: eyeContactMode.value,
+      cameraFocusPosition: cameraFocusPosition.value,
+      recordingMode: recordingMode.value,
+      mirror: mirror.value,
+      countdownEnabled: countdownEnabled.value,
+    },
+    updatedAt,
   }
 
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-    lastDraftSavedAt.value = formatTime(state.updatedAt)
+    lastDraftSavedAt.value = formatTime(updatedAt)
   } catch {
     message.value = '本地保存失败，请复制文案备份。'
   }
@@ -325,11 +629,20 @@ async function saveCloudDraft() {
   isCloudDraftSaving.value = true
   cloudDraftError.value = ''
   try {
+    const targetScriptId = activeScriptId.value
+    const targetCloudDraftId = cloudDraftId.value
     const payload = buildCloudDraftPayload()
-    const res = cloudDraftId.value
-      ? await updateTeleprompterDraft(cloudDraftId.value, payload)
+    const res = targetCloudDraftId
+      ? await updateTeleprompterDraft(targetCloudDraftId, payload)
       : await createTeleprompterDraft(payload)
-    cloudDraftId.value = res.data.draftId
+    const savedScriptIndex = scriptItems.value.findIndex((item) => item.id === targetScriptId)
+    if (savedScriptIndex >= 0) {
+      scriptItems.value[savedScriptIndex] = {
+        ...scriptItems.value[savedScriptIndex],
+        cloudDraftId: res.data.draftId,
+      }
+    }
+    if (activeScriptId.value === targetScriptId) cloudDraftId.value = res.data.draftId
     lastDraftSavedAt.value = res.data.updatedAt ? formatTime(res.data.updatedAt) : formatTime(new Date().toISOString())
     refreshCloudDrafts(false)
   } catch (err: any) {
@@ -343,14 +656,36 @@ async function refreshCloudDrafts(showLoading = true) {
   if (!isCloudDraftEnabled.value) return
   if (showLoading) isDraftListLoading.value = true
   draftListError.value = ''
+  cloudDraftPage.value = 1
   try {
-    const res = await listTeleprompterDrafts({ page: 1, pageSize: 8 })
+    const res = await listTeleprompterDrafts({ page: cloudDraftPage.value, pageSize: cloudDraftPageSize })
     cloudDrafts.value = res.data.items || []
+    cloudDraftTotal.value = res.data.total || cloudDrafts.value.length
   } catch (err: any) {
     cloudDrafts.value = []
+    cloudDraftTotal.value = 0
     draftListError.value = getCloudDraftErrorMessage(err, '草稿列表加载失败')
   } finally {
     if (showLoading) isDraftListLoading.value = false
+  }
+}
+
+async function loadMoreCloudDrafts() {
+  if (!isCloudDraftEnabled.value || isDraftListLoading.value || !hasMoreCloudDrafts.value) return
+  isDraftListLoading.value = true
+  draftListError.value = ''
+  try {
+    const nextPage = cloudDraftPage.value + 1
+    const res = await listTeleprompterDrafts({ page: nextPage, pageSize: cloudDraftPageSize })
+    const existingIds = new Set(cloudDrafts.value.map((draft) => draft.draftId))
+    const nextItems = (res.data.items || []).filter((draft) => !existingIds.has(draft.draftId))
+    cloudDrafts.value = [...cloudDrafts.value, ...nextItems]
+    cloudDraftPage.value = nextPage
+    cloudDraftTotal.value = res.data.total || cloudDrafts.value.length
+  } catch (err: any) {
+    draftListError.value = getCloudDraftErrorMessage(err, '更多历史口播加载失败')
+  } finally {
+    isDraftListLoading.value = false
   }
 }
 
@@ -364,7 +699,7 @@ async function openCloudDraft(draftId: number) {
     pause()
     finishSummary.value = null
     applyCloudDraft(detail.data)
-    message.value = '已打开云端草稿。'
+    message.value = '已打开历史口播。'
     nextTick(() => {
       if (pendingRestoreScrollTop !== null) {
         setViewportTop(pendingRestoreScrollTop)
@@ -384,9 +719,13 @@ async function removeCloudDraft(draftId: number) {
   if (!window.confirm('确认删除这个云端提词草稿吗？本地当前内容不会被清空。')) return
   try {
     await deleteTeleprompterDraft(draftId)
-    if (cloudDraftId.value === draftId) cloudDraftId.value = null
+    if (cloudDraftId.value === draftId) {
+      cloudDraftId.value = null
+      persistActiveScriptItem({ cloudDraftId: null })
+    }
     cloudDrafts.value = cloudDrafts.value.filter((draft) => draft.draftId !== draftId)
-    message.value = '云端草稿已删除。'
+    cloudDraftTotal.value = Math.max(0, cloudDraftTotal.value - 1)
+    message.value = '历史口播已删除。'
   } catch (err: any) {
     draftListError.value = err?.response?.data?.detail || err?.message || '草稿删除失败'
   }
@@ -414,6 +753,10 @@ function buildCloudSettings(): TeleprompterCloudSettings {
     mirrorMode: mirror.value,
     countdownEnabled: countdownEnabled.value,
     countdownSeconds: 3,
+    readingWidthMode: readingWidthMode.value,
+    eyeContactMode: eyeContactMode.value,
+    cameraFocusPosition: cameraFocusPosition.value,
+    recordingMode: recordingMode.value,
   }
 }
 
@@ -427,15 +770,41 @@ function loadSavedState() {
 
   try {
     const state = JSON.parse(raw) as Partial<SavedTeleprompterState>
-    if (typeof state.title === 'string') scriptTitle.value = state.title
-    if (typeof state.text === 'string') scriptText.value = state.text
+    const restoredItems = normalizeScriptItems(state.scripts)
+    if (restoredItems.length) {
+      scriptItems.value = restoredItems
+      activeScriptId.value = restoredItems.some((item) => item.id === state.activeScriptId)
+        ? String(state.activeScriptId)
+        : restoredItems[0].id
+      const settings = (state.settings || {}) as Partial<SavedTeleprompterSettings>
+      if (typeof settings.speed === 'number') speed.value = clamp(settings.speed, 1, 100)
+      if (typeof settings.fontSize === 'number') fontSize.value = clamp(settings.fontSize, 24, 96)
+      if (typeof settings.lineHeight === 'number') lineHeight.value = clamp(settings.lineHeight, 1.2, 2.4)
+      if (settings.theme === 'dark' || settings.theme === 'warm' || settings.theme === 'contrast') theme.value = settings.theme
+      if (settings.readingWidthMode === 'narrow' || settings.readingWidthMode === 'standard' || settings.readingWidthMode === 'wide') readingWidthMode.value = settings.readingWidthMode
+      if (settings.eyeContactMode === 'natural' || settings.eyeContactMode === 'camera' || settings.eyeContactMode === 'distance') eyeContactMode.value = settings.eyeContactMode
+      if (settings.cameraFocusPosition === 'top' || settings.cameraFocusPosition === 'center' || settings.cameraFocusPosition === 'leftTop' || settings.cameraFocusPosition === 'rightTop') cameraFocusPosition.value = settings.cameraFocusPosition
+      if (settings.recordingMode === 'practice' || settings.recordingMode === 'formal') recordingMode.value = settings.recordingMode
+      if (typeof settings.mirror === 'boolean') mirror.value = settings.mirror
+      if (typeof settings.countdownEnabled === 'boolean') countdownEnabled.value = settings.countdownEnabled
+      hydrateActiveScriptItem(true)
+    } else {
+      const legacyText = typeof state.text === 'string' ? state.text : ''
+      const legacyItem = createScriptItem({
+        title: typeof state.title === 'string' ? state.title : inferScriptTitle(legacyText),
+        text: legacyText,
+        scrollTop: typeof state.currentScrollPosition === 'number' ? state.currentScrollPosition : 0,
+      })
+      scriptItems.value = [legacyItem]
+      activeScriptId.value = legacyItem.id
+      hydrateActiveScriptItem(true)
+    }
     if (typeof state.speed === 'number') speed.value = clamp(state.speed, 1, 100)
     if (typeof state.fontSize === 'number') fontSize.value = clamp(state.fontSize, 24, 96)
     if (typeof state.lineHeight === 'number') lineHeight.value = clamp(state.lineHeight, 1.2, 2.4)
     if (state.theme === 'dark' || state.theme === 'warm' || state.theme === 'contrast') theme.value = state.theme
     if (typeof state.mirror === 'boolean') mirror.value = state.mirror
     if (typeof state.countdownEnabled === 'boolean') countdownEnabled.value = state.countdownEnabled
-    if (typeof state.currentScrollPosition === 'number') pendingRestoreScrollTop = state.currentScrollPosition
     if (typeof state.updatedAt === 'string') lastDraftSavedAt.value = formatTime(state.updatedAt)
   } catch {
     message.value = '已忽略损坏的本地缓存。'
@@ -446,11 +815,7 @@ function loadInitialText() {
   const initialText = props.initialText?.trim()
   if (!initialText) return false
 
-  scriptText.value = props.initialText || ''
-  scriptTitle.value = inferScriptTitle(props.initialText || '')
-  resetContentPosition('viewport')
-  message.value = '已载入当前内容，可开启语音跟读。'
-  return true
+  return applyIncomingScriptText(props.initialText || '', '已载入当前内容，可开启语音跟读。')
 }
 
 async function loadCloudDraft() {
@@ -504,9 +869,7 @@ async function loadSourceScript(loader: () => Promise<any>, sourceLabel: string)
   try {
     const res = await loader()
     const data = res.data || {}
-    scriptTitle.value = data.title || `${sourceLabel}提词稿`
-    scriptText.value = data.content || ''
-    pendingRestoreScrollTop = 0
+    replaceActiveScriptContent(data.title || `${sourceLabel}提词稿`, data.content || '', false)
     message.value = `已载入${sourceLabel}内容。`
     reportTeleprompterMetric('teleprompter_script_import')
     return Boolean(scriptText.value.trim())
@@ -519,11 +882,31 @@ async function loadSourceScript(loader: () => Promise<any>, sourceLabel: string)
 }
 
 function applyCloudDraft(draft: TeleprompterDraft) {
-  cloudDraftId.value = draft.draftId
-  scriptTitle.value = draft.title || '未命名提词稿'
-  scriptText.value = draft.content || ''
+  persistActiveScriptItem()
+  const existingIndex = scriptItems.value.findIndex((item) => item.cloudDraftId === draft.draftId)
+  const onlyDefaultScript = scriptItems.value.length === 1 && (scriptItems.value[0].text === defaultText || !scriptItems.value[0].text.trim())
+  const item = createScriptItem({
+    ...(existingIndex >= 0 ? scriptItems.value[existingIndex] : {}),
+    title: draft.title || '未命名提词稿',
+    text: draft.content || '',
+    status: 'todo',
+    scrollTop: draft.currentScrollPosition || 0,
+    progress: 0,
+    cloudDraftId: draft.draftId,
+    updatedAt: draft.updatedAt || new Date().toISOString(),
+  })
+
+  if (existingIndex >= 0) {
+    scriptItems.value[existingIndex] = item
+  } else if (onlyDefaultScript) {
+    scriptItems.value[0] = item
+  } else {
+    scriptItems.value.push(item)
+  }
+
+  activeScriptId.value = item.id
   applyCloudSettings(draft.settings)
-  pendingRestoreScrollTop = draft.currentScrollPosition || 0
+  hydrateActiveScriptItem(true)
   if (draft.updatedAt) lastDraftSavedAt.value = formatTime(draft.updatedAt)
 }
 
@@ -539,6 +922,10 @@ function applyCloudSettings(settings?: Partial<TeleprompterCloudSettings>) {
   if (settings.theme === 'dark' || settings.theme === 'warm' || settings.theme === 'contrast') theme.value = settings.theme
   if (typeof settings.mirrorMode === 'boolean') mirror.value = settings.mirrorMode
   if (typeof settings.countdownEnabled === 'boolean') countdownEnabled.value = settings.countdownEnabled
+  if (settings.readingWidthMode === 'narrow' || settings.readingWidthMode === 'standard' || settings.readingWidthMode === 'wide') readingWidthMode.value = settings.readingWidthMode
+  if (settings.eyeContactMode === 'natural' || settings.eyeContactMode === 'camera' || settings.eyeContactMode === 'distance') eyeContactMode.value = settings.eyeContactMode
+  if (settings.cameraFocusPosition === 'top' || settings.cameraFocusPosition === 'center' || settings.cameraFocusPosition === 'leftTop' || settings.cameraFocusPosition === 'rightTop') cameraFocusPosition.value = settings.cameraFocusPosition
+  if (settings.recordingMode === 'practice' || settings.recordingMode === 'formal') recordingMode.value = settings.recordingMode
 }
 
 function inferScriptTitle(text: string) {
@@ -767,6 +1154,7 @@ function startNow() {
   isFinishConfirmOpen.value = false
   finishSummary.value = null
   if (!sessionStartedAt.value) sessionStartedAt.value = Date.now()
+  if (recordingMode.value === 'formal') persistActiveScriptItem({ status: 'recording' })
   reportTeleprompterMetric('teleprompter_start')
   clearCountdown()
   message.value = ''
@@ -879,20 +1267,29 @@ function formatTeleprompterText(text: string) {
 
   return normalized
     .split(/\n\s*\n+/)
-    .map((paragraph) => formatTeleprompterParagraph(paragraph))
+    .map((block) => formatTeleprompterBlock(block))
     .filter(Boolean)
     .join('\n\n')
 }
 
-function formatTeleprompterParagraph(paragraph: string) {
-  const compactParagraph = paragraph
+function formatTeleprompterBlock(block: string) {
+  return block
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-    .join(' ')
+    .map((line) => formatTeleprompterLine(line))
+    .join('\n')
+}
+
+function formatTeleprompterLine(line: string) {
+  const normalizedLine = line
     .replace(/\s+([，。！？；：、,.!?;:])/g, '$1')
 
-  const sentences = compactParagraph.match(/[^。！？!?；;]+[。！？!?；;]?/g) || [compactParagraph]
+  if (looksLikeSpeechStructureHeading(normalizedLine) || getPromptTextLength(normalizedLine) <= MAX_PROMPT_LINE_LENGTH) {
+    return normalizedLine
+  }
+
+  const sentences = normalizedLine.match(/[^。！？!?；;]+[。！？!?；;]?/g) || [normalizedLine]
   return sentences
     .flatMap((sentence) => splitPromptLine(sentence.trim(), MAX_PROMPT_LINE_LENGTH))
     .filter(Boolean)
@@ -951,7 +1348,7 @@ function getPromptSections(text: string, segments: PromptSegment[]) {
 
   for (const line of lines) {
     const normalizedLine = normalizeSpeechText(line)
-    if (!looksLikePromptTitle(line)) continue
+    if (!looksLikeSpeechStructureHeading(line)) continue
 
     const segment = segments.find((item) => item.normalized.includes(normalizedLine) || normalizedLine.includes(item.normalized))
     if (!segment || sections.some((section) => section.segmentIndex === segment.index)) continue
@@ -963,11 +1360,43 @@ function getPromptSections(text: string, segments: PromptSegment[]) {
     })
   }
 
+  const blocks = text.split(/\n\s*\n+/).map((block) => block.trim()).filter(Boolean)
+  for (const block of blocks) {
+    const firstLine = block.split('\n').map((line) => line.trim()).find(Boolean) || ''
+    const normalizedBlock = normalizeSpeechText(firstLine || block)
+    if (!normalizedBlock) continue
+
+    const segment = segments.find((item) => item.normalized.includes(normalizedBlock) || normalizedBlock.includes(item.normalized))
+      || segments.find((item) => item.normalized && normalizedBlock.includes(item.normalized.slice(0, Math.min(12, item.normalized.length))))
+    if (!segment || sections.some((section) => section.segmentIndex === segment.index)) continue
+
+    sections.push({
+      index: sections.length,
+      title: getParagraphSectionTitle(firstLine || block, sections.length),
+      segmentIndex: segment.index,
+    })
+  }
+
   if (!sections.length && segments.length) {
-    sections.push({ index: 0, title: '开头', segmentIndex: 0 })
+    sections.push({ index: 0, title: '第 1 段', segmentIndex: 0 })
   }
 
   return sections.slice(0, 12)
+}
+
+function getParagraphSectionTitle(text: string, index: number) {
+  const cleaned = text.replace(/^#{1,6}\s+/, '').replace(/[:：]\s*$/, '').trim()
+  if (looksLikeSpeechStructureHeading(cleaned)) return cleaned.slice(0, 18)
+  const preview = Array.from(cleaned.replace(/\s+/g, '')).slice(0, 10).join('')
+  return preview ? `第 ${index + 1} 段：${preview}` : `第 ${index + 1} 段`
+}
+
+function looksLikeSpeechStructureHeading(line: string) {
+  const trimmed = line.trim()
+  if (!trimmed) return false
+  if (looksLikePromptTitle(trimmed)) return true
+  if (getPromptTextLength(trimmed) > 28) return false
+  return /^(开场|开头|引入|痛点|问题|观点|案例|故事|方法|步骤|重点|总结|结尾|收尾|引导|关注|转化|第一部分|第二部分|第三部分|第[一二三四五六七八九十0-9]+[部分章节段]?|[一二三四五六七八九十0-9]+[、.．)]).{0,24}[:：]?$/.test(trimmed)
 }
 
 function normalizeSpeechText(text: string) {
@@ -1216,9 +1645,8 @@ async function handleFileChange(event: Event) {
 
   try {
     const content = await readImportedFile(file, extension)
-    scriptTitle.value = file.name.replace(/\.[^.]+$/, '').slice(0, 50) || inferScriptTitle(content)
-    scriptText.value = content
-    resetContentPosition('editor')
+    replaceActiveScriptContent(file.name.replace(/\.[^.]+$/, '').slice(0, 50) || inferScriptTitle(content), content, false)
+    nextTick(() => editorRef.value?.focus({ preventScroll: true }))
     message.value = `已导入：${file.name}`
     reportTeleprompterMetric('teleprompter_script_import')
     input.value = ''
@@ -1341,18 +1769,14 @@ function useGeneratedScript() {
     message.value = '当前还没有可导入的口播文案。'
     return
   }
-  scriptText.value = props.initialText
-  scriptTitle.value = inferScriptTitle(props.initialText)
-  resetContentPosition('editor')
-  message.value = '已载入当前口播文案。'
+  applyIncomingScriptText(props.initialText, '已将当前口播文案加入队列。')
 }
 
 function clearText() {
   if (scriptText.value.trim() && !window.confirm('确认清空当前提词文案吗？此操作不可撤销。')) return
   pause()
-  scriptTitle.value = '未命名提词稿'
-  scriptText.value = ''
-  resetContentPosition('editor')
+  replaceActiveScriptContent('未命名提词稿', '', false)
+  nextTick(() => editorRef.value?.focus({ preventScroll: true }))
   message.value = '文案已清空。'
 }
 
@@ -1360,6 +1784,7 @@ function handleEditorInput() {
   if (scriptTitle.value === '未命名提词稿' && scriptText.value.trim()) {
     scriptTitle.value = inferScriptTitle(scriptText.value)
   }
+  if (activeScriptItem.value?.status === 'done') persistActiveScriptItem({ status: 'recording', durationSeconds: undefined })
   scheduleProgressUpdate()
 }
 
@@ -1382,7 +1807,8 @@ function handleEditorPaste(event: ClipboardEvent) {
   const insertedText = `${prefix}${formattedText}${suffix}`
 
   scriptText.value = `${before}${insertedText}${after}`
-  message.value = `已自动分句，每段不超过 ${MAX_PROMPT_LINE_LENGTH} 字。`
+  if (activeScriptItem.value?.status === 'done') persistActiveScriptItem({ status: 'recording', durationSeconds: undefined })
+  message.value = `已保留原文分段，并优化超过 ${MAX_PROMPT_LINE_LENGTH} 字的长句。`
   nextTick(() => {
     const cursorPosition = before.length + insertedText.length
     editor?.setSelectionRange(cursorPosition, cursorPosition)
@@ -1445,21 +1871,41 @@ function cancelFinish() {
   message.value = '已取消结束，当前提词位置已保留。'
 }
 
-function confirmFinish() {
+function confirmFinish(goNext = false) {
   pause()
   isInteractionPaused.value = false
   isFinishConfirmOpen.value = false
   const durationSeconds = sessionStartedAt.value ? Math.max(1, Math.round((Date.now() - sessionStartedAt.value) / 1000)) : 0
+  const completedTitle = scriptTitle.value.trim() || '未命名提词稿'
+  const completionRate = Math.round(scrollProgress.value)
   finishSummary.value = {
+    title: completedTitle,
     durationSeconds,
-    completionRate: Math.round(scrollProgress.value),
+    completionRate,
     wordCount: wordsCount.value,
   }
+  persistActiveScriptItem(recordingMode.value === 'formal'
+    ? {
+        title: completedTitle,
+        status: 'done',
+        progress: completionRate,
+        durationSeconds,
+      }
+    : {
+        title: completedTitle,
+        progress: completionRate,
+      })
   sessionStartedAt.value = null
   saveDraftState()
   saveCloudDraft()
   reportTeleprompterMetric('teleprompter_finish')
-  message.value = '本次提词已结束，草稿和位置已保存。'
+  if (recordingMode.value === 'practice') {
+    message.value = '练习已结束，位置已保存，未标记完成。'
+  } else if (goNext && goToNextPendingScriptItem()) {
+    message.value = `「${completedTitle}」已完成，已切换到下一篇。`
+  } else {
+    message.value = '本次提词已结束，草稿和位置已保存。'
+  }
 }
 
 function reportTeleprompterMetric(eventName: string) {
@@ -1631,11 +2077,12 @@ onUnmounted(() => {
       <div class="command-title">
         <span class="badge badge-accent">在线提词器</span>
         <strong>{{ scriptTitle }}</strong>
-        <em>{{ isPlaying ? '滚动中' : countdown > 0 ? '倒计时' : '待开始' }}</em>
+        <em>{{ scriptQueueLabel }} · {{ isPlaying ? '滚动中' : countdown > 0 ? '倒计时' : '待开始' }}</em>
       </div>
 
       <div class="transport-controls" aria-label="提词器播放控制">
         <button class="transport-btn" title="回到开头" @click="jumpToStart">|‹</button>
+        <button class="transport-btn" title="上一篇" @click="goToRelativeScriptItem(-1)">上一篇</button>
         <button class="transport-btn" title="上一段" @click="goToRelativeSection(-1)">上一段</button>
         <button class="transport-btn play-btn" title="播放或暂停" @click="togglePlay">
           {{ isPlaying || countdown > 0 ? 'Pause' : 'Play' }}
@@ -1644,6 +2091,7 @@ onUnmounted(() => {
           互动
         </button>
         <button class="transport-btn" title="下一段" @click="goToRelativeSection(1)">下一段</button>
+        <button class="transport-btn" title="下一篇" @click="goToRelativeScriptItem(1)">下一篇</button>
         <button class="transport-btn" title="跳到末尾" @click="jumpToEnd">›|</button>
         <button class="transport-btn finish-btn" title="结束本次提词" @click="openFinishConfirm">结束</button>
       </div>
@@ -1691,10 +2139,19 @@ onUnmounted(() => {
           </label>
         </div>
 
-        <div class="theme-picker compact-theme">
-          <button class="tab-item" :class="{ active: theme === 'dark' }" @click="theme = 'dark'">经典</button>
-          <button class="tab-item" :class="{ active: theme === 'warm' }" @click="theme = 'warm'">暖色</button>
-          <button class="tab-item" :class="{ active: theme === 'contrast' }" @click="theme = 'contrast'">高可读</button>
+        <div class="theme-picker compact-theme" aria-label="舞台配色">
+          <button class="tab-item" :class="{ active: theme === 'dark' }" @click="theme = 'dark'">舞台暗色</button>
+          <button class="tab-item" :class="{ active: theme === 'warm' }" @click="theme = 'warm'">暖色舞台</button>
+          <button class="tab-item" :class="{ active: theme === 'contrast' }" @click="theme = 'contrast'">高对比舞台</button>
+        </div>
+
+        <div class="reading-width-picker setting-group compact">
+          <span>阅读宽度</span>
+          <div class="reading-width-tabs">
+            <button type="button" :class="{ active: readingWidthMode === 'narrow' }" @click="readingWidthMode = 'narrow'">窄</button>
+            <button type="button" :class="{ active: readingWidthMode === 'standard' }" @click="readingWidthMode = 'standard'">标准</button>
+            <button type="button" :class="{ active: readingWidthMode === 'wide' }" @click="readingWidthMode = 'wide'">宽</button>
+          </div>
         </div>
       </div>
     </section>
@@ -1703,8 +2160,67 @@ onUnmounted(() => {
       <aside class="teleprompter-sidebar glass-card">
         <div class="teleprompter-title-block">
           <h2>提词文案</h2>
-          <p>开播中优先用上方播放器和互动暂停；字号、主题等属于开播前设置。</p>
         </div>
+
+        <section class="script-queue-panel">
+          <div class="script-queue-head">
+            <div>
+              <strong>口播队列</strong>
+              <span>{{ doneScriptCount }} / {{ scriptItems.length }} 已完成</span>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" @click="addScriptItem()">新增文案</button>
+          </div>
+
+          <div class="script-queue-list">
+            <article
+              v-for="(item, index) in scriptItems"
+              :key="item.id"
+              class="script-queue-item"
+              :class="{ active: item.id === activeScriptId, done: item.status === 'done' }"
+            >
+              <button type="button" class="script-queue-main" @click="switchScriptItem(item.id)">
+                <span>第 {{ index + 1 }} 篇</span>
+                <strong>{{ item.title || '未命名提词稿' }}</strong>
+                <em>{{ getScriptStatusLabel(item.status) }} · {{ Math.round(item.progress) }}%{{ item.durationSeconds ? ` · ${formatDuration(item.durationSeconds)}` : '' }}</em>
+              </button>
+              <button type="button" class="script-queue-delete" title="删除口播文案" @click="removeScriptItem(item.id)">删除</button>
+            </article>
+          </div>
+        </section>
+
+        <section class="recording-preflight-panel">
+          <div class="preflight-head">
+            <div>
+              <strong>{{ recordingModeLabel }}</strong>
+              <span>{{ eyeContactLabel }} · {{ allReadinessPassed ? '准备就绪' : '建议检查' }}</span>
+            </div>
+            <div class="recording-mode-switch">
+              <button type="button" :class="{ active: recordingMode === 'practice' }" @click="recordingMode = 'practice'">练习</button>
+              <button type="button" :class="{ active: recordingMode === 'formal' }" @click="recordingMode = 'formal'">正式</button>
+            </div>
+          </div>
+
+          <div class="eye-contact-modes">
+            <button type="button" :class="{ active: eyeContactMode === 'natural' }" @click="applyEyeContactMode('natural')">自然</button>
+            <button type="button" :class="{ active: eyeContactMode === 'camera' }" @click="applyEyeContactMode('camera')">看镜头</button>
+            <button type="button" :class="{ active: eyeContactMode === 'distance' }" @click="applyEyeContactMode('distance')">远距离</button>
+          </div>
+
+          <div class="camera-focus-grid" aria-label="镜头安全区校准">
+            <button type="button" :class="{ active: cameraFocusPosition === 'top' }" @click="cameraFocusPosition = 'top'">上方镜头</button>
+            <button type="button" :class="{ active: cameraFocusPosition === 'center' }" @click="cameraFocusPosition = 'center'">中间镜头</button>
+            <button type="button" :class="{ active: cameraFocusPosition === 'leftTop' }" @click="cameraFocusPosition = 'leftTop'">左上镜头</button>
+            <button type="button" :class="{ active: cameraFocusPosition === 'rightTop' }" @click="cameraFocusPosition = 'rightTop'">右上镜头</button>
+          </div>
+
+          <div class="preflight-check-list">
+            <span v-for="item in teleprompterReadinessChecks" :key="item.label" :class="{ passed: item.passed }">
+              {{ item.passed ? '✓' : '!' }} {{ item.label }}
+            </span>
+          </div>
+
+          <p v-for="tip in teleprompterRiskTips" :key="tip" class="preflight-risk">{{ tip }}</p>
+        </section>
 
         <label class="script-title-field">
           脚本标题
@@ -1724,8 +2240,8 @@ onUnmounted(() => {
         <section v-if="isCloudDraftEnabled" class="cloud-draft-panel">
           <div class="cloud-draft-head">
             <div>
-              <strong>云端草稿</strong>
-              <span>{{ cloudDrafts.length ? `最近 ${cloudDrafts.length} 条` : '暂无草稿' }}</span>
+              <strong>历史口播</strong>
+              <span>{{ cloudDraftTotal ? `已显示 ${cloudDrafts.length} / ${cloudDraftTotal} 条` : '暂无历史' }}</span>
             </div>
             <button class="btn btn-ghost btn-sm" :disabled="isDraftListLoading" @click="refreshCloudDrafts()">
               {{ isDraftListLoading ? '刷新中' : '刷新' }}
@@ -1745,11 +2261,20 @@ onUnmounted(() => {
                 <strong>{{ draft.title }}</strong>
                 <span>{{ draft.wordCount }} 字/词 · {{ draft.paragraphCount }} 段 · {{ draft.updatedAt ? formatTime(draft.updatedAt) : '未保存时间' }}</span>
               </button>
-              <button type="button" class="cloud-draft-delete" title="删除云端草稿" @click="removeCloudDraft(draft.draftId)">删除</button>
+              <button type="button" class="cloud-draft-delete" title="删除历史口播" @click="removeCloudDraft(draft.draftId)">删除</button>
             </article>
           </div>
 
-          <p v-else-if="!draftListError" class="cloud-draft-empty">保存一次后，这里会显示云端提词稿。</p>
+          <button
+            v-if="hasMoreCloudDrafts"
+            type="button"
+            class="cloud-draft-load-more"
+            :disabled="isDraftListLoading"
+            @click="loadMoreCloudDrafts"
+          >{{ isDraftListLoading ? '加载中' : '加载更多历史口播' }}</button>
+
+          <p v-else-if="!draftListError && !cloudDrafts.length" class="cloud-draft-empty">保存一次后，这里会显示你的历史口播文案。</p>
+          <p v-else-if="!draftListError" class="cloud-draft-empty">已显示全部历史口播。</p>
         </section>
 
         <div class="teleprompter-editor-actions">
@@ -1791,6 +2316,7 @@ onUnmounted(() => {
           </div>
           <div class="stage-actions">
             <button class="btn btn-ghost btn-sm" @click="resetScroll">重置</button>
+            <button class="btn btn-ghost btn-sm" :disabled="!hasNextScriptItem" @click="goToRelativeScriptItem(1)">下一篇</button>
             <button class="btn btn-ghost btn-sm" @click="toggleFullscreen">
               {{ isFullscreen ? '退出全屏' : '全屏' }}
             </button>
@@ -1805,7 +2331,7 @@ onUnmounted(() => {
         <div
           ref="viewportRef"
           class="teleprompter-viewport"
-          :class="{ dragging: isDraggingViewport }"
+          :class="[readingWidthClass, cameraFocusClass, { dragging: isDraggingViewport }]"
           tabindex="0"
           @click="handleViewportClick"
           @pointerdown="startViewportDrag"
@@ -1813,6 +2339,8 @@ onUnmounted(() => {
           @wheel.passive="handleWheel"
         >
           <div v-if="countdown > 0" class="countdown-overlay">{{ countdown }}</div>
+          <div class="reading-guide reading-guide-left" aria-hidden="true"></div>
+          <div class="reading-guide reading-guide-right" aria-hidden="true"></div>
           <article class="prompt-content" :style="displayStyle">
             <template v-if="promptSegments.length">
               <span
@@ -1852,29 +2380,20 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="shortcut-strip">
-          <span>点击画面：启停</span>
-          <span>空格：暂停</span>
-          <span>↑/↓：上下滚动</span>
-          <span>←/→：上一段/下一段</span>
-          <span>F：全屏</span>
-          <span>I/Enter：互动暂停</span>
-          <span>翻页笔/PageUp/PageDown：上下翻页</span>
-          <span>长按翻页笔：调慢/调快速度</span>
-          <span>+ / - / 音量键：调速</span>
-          <span>Esc：暂停或退出全屏</span>
-        </div>
       </section>
     </div>
 
     <div v-if="isFinishConfirmOpen" class="modal-backdrop" @click.self="cancelFinish">
       <section class="finish-modal glass-card">
         <span class="badge badge-accent">结束确认</span>
-        <h3>确认结束本次提词？</h3>
-        <p>当前脚本、显示设置和播放位置会自动保存，结束后可重新播放或复制脚本。</p>
+        <h3>确认结束{{ recordingModeLabel }}？</h3>
+        <p>{{ finishModalDescription }}</p>
         <div class="finish-actions">
           <button class="btn btn-ghost" @click="cancelFinish">继续提词</button>
-          <button class="btn btn-primary" @click="confirmFinish">确认结束</button>
+          <button class="btn btn-ghost" @click="confirmFinish(false)">
+            {{ recordingMode === 'formal' ? '仅标记完成' : '结束练习' }}
+          </button>
+          <button v-if="recordingMode === 'formal'" class="btn btn-primary" @click="confirmFinish(true)">完成并进入下一篇</button>
         </div>
       </section>
     </div>
@@ -1882,7 +2401,7 @@ onUnmounted(() => {
     <section v-if="finishSummary" class="finish-summary glass-card">
       <div>
         <span class="badge badge-accent">本次统计</span>
-        <h3>{{ scriptTitle }}</h3>
+        <h3>{{ finishSummary.title }}</h3>
       </div>
       <div class="summary-grid">
         <span><strong>{{ finishDurationLabel }}</strong>提词时长</span>
@@ -2099,7 +2618,7 @@ onUnmounted(() => {
 
 .top-settings {
   display: grid;
-  grid-template-columns: minmax(160px, 1.1fr) minmax(130px, 0.8fr) minmax(130px, 0.8fr) auto minmax(210px, 1fr);
+  grid-template-columns: minmax(160px, 1.1fr) minmax(130px, 0.8fr) minmax(130px, 0.8fr) auto minmax(190px, 0.9fr) minmax(170px, 0.8fr);
   gap: 10px;
   align-items: center;
   opacity: 0.92;
@@ -2144,6 +2663,217 @@ onUnmounted(() => {
   color: #6e6e73;
   font-size: 14px;
   line-height: 1.75;
+}
+
+.script-queue-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 24px;
+  background: #f8fafc;
+}
+
+.script-queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.script-queue-head div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.script-queue-head strong {
+  color: #1d1d1f;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.script-queue-head span {
+  color: #6e6e73;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.script-queue-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.script-queue-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid rgba(29, 29, 31, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.script-queue-item.active {
+  border-color: rgba(36, 87, 255, 0.3);
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(36, 87, 255, 0.08);
+}
+
+.script-queue-item.done {
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.script-queue-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.script-queue-main span,
+.script-queue-main em {
+  color: #86868b;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.script-queue-main strong {
+  overflow: hidden;
+  color: #1d1d1f;
+  font-size: 13px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.script-queue-delete {
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 999px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.recording-preflight-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(36, 87, 255, 0.12);
+  border-radius: 24px;
+  background: linear-gradient(135deg, #f8fbff, #f5f7ff);
+}
+
+.preflight-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.preflight-head div:first-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.preflight-head strong {
+  color: #1d1d1f;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.preflight-head span {
+  color: #6e6e73;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.recording-mode-switch,
+.eye-contact-modes,
+.camera-focus-grid {
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.recording-mode-switch {
+  grid-template-columns: repeat(2, minmax(46px, 1fr));
+}
+
+.eye-contact-modes {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.camera-focus-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recording-mode-switch button,
+.eye-contact-modes button,
+.camera-focus-grid button {
+  min-width: 0;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #64748b;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.recording-mode-switch button.active,
+.eye-contact-modes button.active,
+.camera-focus-grid button.active {
+  background: #2457ff;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(36, 87, 255, 0.16);
+}
+
+.preflight-check-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preflight-check-list span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.preflight-check-list span.passed {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.preflight-risk {
+  margin: 0;
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.55;
 }
 
 .teleprompter-editor-actions {
@@ -2305,6 +3035,24 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
+.cloud-draft-load-more {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(36, 87, 255, 0.16);
+  border-radius: 16px;
+  background: #eef3ff;
+  color: #2457ff;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.cloud-draft-load-more:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .teleprompter-textarea {
   min-height: 0;
   flex: 1;
@@ -2429,6 +3177,44 @@ onUnmounted(() => {
 .theme-picker .tab-item {
   padding: 8px 6px;
   font-size: 12px;
+}
+
+.reading-width-picker {
+  min-width: 0;
+}
+
+.reading-width-picker > span {
+  color: #515154;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.reading-width-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  padding: 4px;
+  border-radius: 16px;
+  background: #f5f5f7;
+}
+
+.reading-width-tabs button {
+  min-width: 0;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #6e6e73;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.reading-width-tabs button.active {
+  background: #fff;
+  color: #2457ff;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
 }
 
 .teleprompter-stats {
@@ -2565,6 +3351,7 @@ onUnmounted(() => {
   overflow-y: auto;
   background: #050507;
   padding: clamp(56px, 9vw, 128px) clamp(32px, 8vw, 118px);
+  --reading-width: clamp(560px, 58vw, 920px);
   outline: none;
   cursor: grab;
   scroll-behavior: auto;
@@ -2575,6 +3362,76 @@ onUnmounted(() => {
 
 .teleprompter-viewport.dragging {
   cursor: grabbing;
+}
+
+.teleprompter-viewport.reading-width-narrow {
+  --reading-width: clamp(460px, 46vw, 720px);
+}
+
+.teleprompter-viewport.reading-width-standard {
+  --reading-width: clamp(560px, 58vw, 920px);
+}
+
+.teleprompter-viewport.reading-width-wide {
+  --reading-width: clamp(680px, 68vw, 1100px);
+}
+
+.reading-guide {
+  position: fixed;
+  top: 10vh;
+  bottom: 10vh;
+  z-index: 2;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, rgba(147, 197, 253, 0.3), transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.reading-guide-left {
+  left: calc(50% - var(--reading-width) / 2);
+}
+
+.reading-guide-right {
+  left: calc(50% + var(--reading-width) / 2);
+}
+
+.teleprompter-viewport:fullscreen .reading-guide {
+  opacity: 1;
+}
+
+.teleprompter-viewport.camera-focus-top:fullscreen .prompt-content {
+  transform-origin: center top;
+}
+
+.teleprompter-viewport.camera-focus-center:fullscreen {
+  padding-top: clamp(96px, 14vh, 180px);
+}
+
+.teleprompter-viewport.camera-focus-leftTop:fullscreen .prompt-content {
+  margin-left: calc(50% - var(--reading-width) / 2 - 4vw);
+  margin-right: auto;
+}
+
+.teleprompter-viewport.camera-focus-rightTop:fullscreen .prompt-content {
+  margin-left: auto;
+  margin-right: calc(50% - var(--reading-width) / 2 - 4vw);
+}
+
+.teleprompter-viewport.camera-focus-leftTop:fullscreen .reading-guide-left {
+  left: calc(50% - var(--reading-width) / 2 - 4vw);
+}
+
+.teleprompter-viewport.camera-focus-leftTop:fullscreen .reading-guide-right {
+  left: calc(50% + var(--reading-width) / 2 - 4vw);
+}
+
+.teleprompter-viewport.camera-focus-rightTop:fullscreen .reading-guide-left {
+  left: calc(50% - var(--reading-width) / 2 + 4vw);
+}
+
+.teleprompter-viewport.camera-focus-rightTop:fullscreen .reading-guide-right {
+  left: calc(50% + var(--reading-width) / 2 + 4vw);
 }
 
 .runtime-speed-bar {
@@ -2712,6 +3569,8 @@ onUnmounted(() => {
 
 .prompt-content {
   min-height: 140vh;
+  width: min(100%, var(--reading-width));
+  margin: 0 auto;
   padding-bottom: 48vh;
   color: #f7f7fb;
   font-weight: 700;
@@ -2740,9 +3599,9 @@ onUnmounted(() => {
 }
 
 .prompt-segment.active {
-  background: rgba(253, 203, 110, 0.28);
+  background: rgba(253, 203, 110, 0.34);
   color: #ffe08a;
-  text-shadow: 0 0 24px rgba(253, 203, 110, 0.42);
+  text-shadow: 0 0 28px rgba(253, 203, 110, 0.5);
 }
 
 .prompt-segment.read {
@@ -2751,15 +3610,41 @@ onUnmounted(() => {
 }
 
 .prompt-segment.next {
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(255, 255, 255, 0.92);
   text-decoration: underline;
   text-decoration-color: rgba(116, 185, 255, 0.6);
   text-decoration-thickness: 0.08em;
   text-underline-offset: 0.15em;
 }
 
-.theme-warm .teleprompter-viewport,
-.theme-warm.teleprompter-stage {
+.teleprompter-viewport:fullscreen .prompt-segment.active {
+  box-shadow: 0 0 0 0.08em rgba(253, 203, 110, 0.12);
+}
+
+.teleprompter-viewport:fullscreen .prompt-segment.next {
+  color: #c7e8ff;
+}
+
+.theme-dark .teleprompter-stage,
+.theme-warm .teleprompter-stage,
+.theme-contrast .teleprompter-stage {
+  background: #fff;
+}
+
+.theme-dark .stage-toolbar,
+.theme-warm .stage-toolbar,
+.theme-contrast .stage-toolbar,
+.theme-dark .progress-track,
+.theme-warm .progress-track,
+.theme-contrast .progress-track {
+  background: #fff;
+}
+
+.theme-dark .teleprompter-viewport {
+  background: #050507;
+}
+
+.theme-warm .teleprompter-viewport {
   background: #14100b;
 }
 
@@ -2767,8 +3652,7 @@ onUnmounted(() => {
   color: #fff3d7;
 }
 
-.theme-contrast .teleprompter-viewport,
-.theme-contrast.teleprompter-stage {
+.theme-contrast .teleprompter-viewport {
   background: #000;
 }
 
@@ -2788,22 +3672,6 @@ onUnmounted(() => {
   font-size: clamp(96px, 20vw, 220px);
   font-weight: 800;
   pointer-events: none;
-}
-
-.shortcut-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px 16px 14px;
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
-  color: #64748b;
-  font-size: 12px;
-}
-
-.shortcut-strip span {
-  padding: 4px 8px;
-  border-radius: var(--radius-full);
-  background: #f8fafc;
 }
 
 .modal-backdrop {
@@ -2987,7 +3855,7 @@ onUnmounted(() => {
 
 .top-settings {
   grid-column: 1 / -1;
-  grid-template-columns: minmax(220px, 1.2fr) minmax(180px, 0.9fr) minmax(180px, 0.9fr) minmax(150px, auto) minmax(240px, 1fr);
+  grid-template-columns: minmax(220px, 1.1fr) minmax(170px, 0.85fr) minmax(170px, 0.85fr) minmax(150px, auto) minmax(220px, 0.95fr) minmax(190px, 0.8fr);
   gap: 12px;
 }
 
@@ -3039,11 +3907,6 @@ onUnmounted(() => {
 
 .teleprompter-viewport {
   padding: clamp(72px, 9vw, 140px) clamp(44px, 8vw, 130px);
-}
-
-.shortcut-strip {
-  justify-content: center;
-  padding: 14px 18px 16px;
 }
 
 @media (max-width: 1280px) {

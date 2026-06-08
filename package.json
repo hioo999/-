@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "deploy:test": "scripts/deploy-test.sh",
+    "deploy:prod": "scripts/deploy-prod.sh",
     "harness:validate": "harness validate",
     "harness:check-deps": "harness check-deps"
   },

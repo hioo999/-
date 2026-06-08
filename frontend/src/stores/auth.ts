@@ -26,7 +26,7 @@ function readStoredUser(): ActiveUser | undefined {
 
 export const useAuthStore = defineStore('auth', () => {
   const currentUser = ref<ActiveUser | undefined>(readStoredUser())
-  const isGuestUser = computed(() => currentUser.value?.isGuest === true && !currentUser.value?.token)
+  const isGuestUser = computed(() => !currentUser.value?.token)
   const isAdminUser = computed(() => currentUser.value?.is_admin === true)
 
   function hydrate() {

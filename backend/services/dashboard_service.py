@@ -99,7 +99,7 @@ def get_dashboard_overview(db: Session, user: UserAccount) -> dict:
     if failed_tasks:
         today_actions.insert(0, {
             "title": "处理失败任务",
-            "status": "待处理",
+            "status": "需关注",
             "owner": f"{failed_tasks} 个任务失败",
             "action": "去任务中心",
             "actionKey": "platform",

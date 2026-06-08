@@ -9,3 +9,4 @@ venv
 output
 *.db
 .env
+video_engine/config.yaml

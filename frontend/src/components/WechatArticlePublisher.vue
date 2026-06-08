@@ -52,6 +52,8 @@ import {
 const props = defineProps<{
   initialTitle?: string
   initialContent?: string
+  initialInputMode?: 'topic' | 'url' | 'text'
+  initialSourceUrl?: string
   initialProjectId?: number
   initialTopicId?: number
   sourceType?: string
@@ -99,10 +101,10 @@ const selectedPromptTemplateId = ref(0)
 const selectedTextModelId = ref(0)
 const selectedImageModelId = ref(0)
 const platformContentId = ref(0)
-const articleInputMode = ref<'topic' | 'url' | 'text'>('topic')
-const articleTheme = ref('')
-const articleUrl = ref('')
-const articleSourceText = ref('')
+const articleInputMode = ref<'topic' | 'url' | 'text'>(props.initialInputMode || 'topic')
+const articleTheme = ref(props.initialInputMode === 'topic' ? props.initialContent || props.initialTitle || '' : props.initialTitle || '')
+const articleUrl = ref(props.initialInputMode === 'url' ? props.initialSourceUrl || props.initialContent || '' : '')
+const articleSourceText = ref(props.initialInputMode === 'text' ? props.initialContent || '' : '')
 const articleExtraRequirements = ref('')
 const projectForm = reactive({
   name: '默认 IP 项目',
@@ -120,6 +122,86 @@ const activeAssetId = ref(0)
 const isCoverGenerating = ref(false)
 const pollingTaskIds = ref<number[]>([])
 const markdownTextarea = ref<HTMLTextAreaElement | null>(null)
+const editorMode = ref<'source' | 'blocks'>('source')
+
+interface ContentBlock {
+  id: string
+  title: string
+  body: string
+}
+
+const contentBlocks = ref<ContentBlock[]>([])
+
+const imageSlotSummary = computed(() => {
+  const slots = generatedArticle.value?.imageSlots || []
+  if (!slots.length) return null
+  const ready = slots.filter((slot) => Boolean(slot.imageUrl || slot.assetId)).length
+  const failed = slots.filter((slot) => slot.status === 'failed').length
+  return { total: slots.length, ready, failed, pending: slots.length - ready - failed }
+})
+
+function parseContentBlocks(markdown: string): ContentBlock[] {
+  const lines = markdown.split('\n')
+  const blocks: ContentBlock[] = []
+  let currentTitle = '开篇'
+  let currentBody: string[] = []
+
+  const flush = () => {
+    blocks.push({
+      id: `block-${blocks.length}`,
+      title: currentTitle,
+      body: currentBody.join('\n').trim(),
+    })
+    currentBody = []
+  }
+
+  for (const line of lines) {
+    const heading = line.match(/^##\s+(.+)$/)
+    if (heading) {
+      if (currentBody.length || blocks.length) flush()
+      currentTitle = heading[1].trim() || `段落 ${blocks.length + 1}`
+      continue
+    }
+    currentBody.push(line)
+  }
+  flush()
+  return blocks.filter((block) => block.title || block.body)
+}
+
+function syncBlocksFromMarkdown() {
+  contentBlocks.value = parseContentBlocks(rawContent.value)
+}
+
+function applyBlocksToMarkdown() {
+  rawContent.value = contentBlocks.value
+    .map((block) => `## ${block.title || '段落'}\n\n${block.body}`.trim())
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+function switchEditorMode(mode: 'source' | 'blocks') {
+  if (mode === editorMode.value) return
+  if (mode === 'blocks') syncBlocksFromMarkdown()
+  else applyBlocksToMarkdown()
+  editorMode.value = mode
+}
+
+function addContentBlock() {
+  contentBlocks.value.push({
+    id: `block-${Date.now()}`,
+    title: `新段落 ${contentBlocks.value.length + 1}`,
+    body: '',
+  })
+}
+
+function removeContentBlock(blockId: string) {
+  contentBlocks.value = contentBlocks.value.filter((block) => block.id !== blockId)
+  applyBlocksToMarkdown()
+}
+
+function ensureMarkdownSynced() {
+  if (editorMode.value === 'blocks') applyBlocksToMarkdown()
+}
 
 const accountForm = reactive({
   accountId: 0,
@@ -147,6 +229,27 @@ const articleGenerateDisabledReason = computed(() => {
   if (articleInputMode.value === 'text' && !articleSourceText.value.trim()) return '请先粘贴原文内容。'
   return ''
 })
+
+const quickStartOptions = [
+  {
+    mode: 'topic' as const,
+    title: '输入主题生成',
+    desc: '从一个选题直接生成标题、摘要、正文和封面建议。',
+    action: '适合从 0 到 1 写公众号文章',
+  },
+  {
+    mode: 'url' as const,
+    title: '粘贴链接二创',
+    desc: '自动解析公众号、网页、知乎等链接，再改写成原创公众号稿。',
+    action: '适合把外部文章整理成自己的观点',
+  },
+  {
+    mode: 'text' as const,
+    title: '粘贴原文二创',
+    desc: '把已有文章、笔记或资料重组为可发布的公众号长文。',
+    action: '适合已有素材快速成稿',
+  },
+]
 
 const taskTypeLabelMap: Record<string, string> = {
   wechat_article_generate: '文章生成',
@@ -195,7 +298,12 @@ function formatDraftStatus(draft: WechatDraftRecord) {
 }
 
 function friendlyError(fallback: string) {
-  return `${fallback}，请稍后重试。`
+  return fallback
+}
+
+function selectQuickStart(mode: 'topic' | 'url' | 'text') {
+  articleInputMode.value = mode
+  feedback.value = null
 }
 
 watch(
@@ -204,6 +312,13 @@ watch(
     if (value?.trim() && rawContent.value.includes('请输入或粘贴二创后的文章内容')) {
       rawContent.value = value
     }
+    if (value?.trim() && articleInputMode.value === 'text') {
+      articleSourceText.value = value
+    }
+    if (value?.trim() && articleInputMode.value === 'topic') {
+      articleTheme.value = value
+    }
+    if (value?.trim() && articleInputMode.value === 'url' && !props.initialSourceUrl?.trim()) articleUrl.value = value
   }
 )
 
@@ -211,6 +326,25 @@ watch(
   () => props.initialTitle,
   (value) => {
     if (value?.trim() && title.value === '未命名公众号文章') title.value = value
+    if (value?.trim() && articleInputMode.value === 'topic' && !props.initialContent?.trim()) articleTheme.value = value
+  }
+)
+
+watch(
+  () => props.initialInputMode,
+  (value) => {
+    if (!value) return
+    articleInputMode.value = value
+    if (value === 'text') articleSourceText.value = props.initialContent || ''
+    if (value === 'topic') articleTheme.value = props.initialContent || props.initialTitle || ''
+    if (value === 'url') articleUrl.value = props.initialSourceUrl || props.initialContent || ''
+  }
+)
+
+watch(
+  () => props.initialSourceUrl,
+  (value) => {
+    if (articleInputMode.value === 'url') articleUrl.value = value || ''
   }
 )
 
@@ -437,6 +571,7 @@ async function handleGenerateWechatArticle() {
 
 async function saveCurrentArticle() {
   if (!platformContentId.value) return
+  ensureMarkdownSynced()
   try {
     const res = await updateWechatArticle(platformContentId.value, {
       title: title.value,
@@ -746,8 +881,8 @@ async function refreshAccounts() {
     accounts.value = res.data.items || []
     const defaultAccount = accounts.value.find((item) => item.isDefault) || accounts.value[0]
     if (defaultAccount && !selectedAccountId.value) selectedAccountId.value = defaultAccount.accountId
-  } catch (err: any) {
-    feedback.value = { type: 'error', message: friendlyError('公众号账号加载失败') }
+  } catch {
+    accounts.value = []
   }
 }
 
@@ -870,6 +1005,7 @@ async function loadThemes() {
 }
 
 async function handlePreview() {
+  ensureMarkdownSynced()
   if (!rawContent.value.trim()) return
   isLoading.value = true
   try {
@@ -880,14 +1016,13 @@ async function handlePreview() {
       accountId: selectedAccountId.value || undefined,
     })
     if (res.code !== 0) {
-      feedback.value = { type: 'error', message: res.message || '排版预览失败' }
       return
     }
     formattedHtml.value = res.data.formattedHtml
     feedback.value = { type: 'success', message: '排版预览已更新' }
     if (platformContentId.value) await saveCurrentArticle()
-  } catch (err: any) {
-    feedback.value = { type: 'error', message: friendlyError('排版预览失败') }
+  } catch {
+    formattedHtml.value = ''
   } finally {
     isLoading.value = false
   }
@@ -994,7 +1129,7 @@ function wrapEditorSelection(prefix: string, suffix: string, placeholder: string
   setEditorSelection(start + prefix.length, start + prefix.length + selected.length)
 }
 
-type EditorBlockKind = 'h2' | 'h3' | 'quote' | 'golden' | 'focus' | 'divider' | 'follow' | 'recommend'
+type EditorBlockKind = 'h2' | 'h3' | 'quote' | 'golden' | 'focus' | 'divider' | 'follow' | 'recommend' | 'ul' | 'ol'
 
 function insertEditorBlock(kind: EditorBlockKind) {
   const blocks: Record<EditorBlockKind, string> = {
@@ -1006,6 +1141,8 @@ function insertEditorBlock(kind: EditorBlockKind) {
     divider: '\n\n---\n\n',
     follow: '\n\n---\n\n如果这篇内容对你有帮助，欢迎关注我，持续分享更多实用方法。\n\n',
     recommend: '\n\n## 推荐阅读\n\n- [相关阅读标题](https://example.com)\n\n',
+    ul: '\n\n- 列表项一\n- 列表项二\n\n',
+    ol: '\n\n1. 第一步\n2. 第二步\n\n',
   }
   const insertion = blocks[kind]
   const placeholderStart = insertion.search(/小标题|小节标题|这里填写|相关阅读标题/)
@@ -1037,9 +1174,24 @@ function insertEditorBlock(kind: EditorBlockKind) {
         <div>
           <span class="section-eyebrow">Content Workbench</span>
           <h3>公众号内容工作台</h3>
-          <p>先创建项目和选题，再通过链接、原文或主题生成结构化公众号文章，生成结果会自动进入下方排版编辑区。</p>
+          <p>选择一个开始方式：输入主题、粘贴链接自动解析二创，或粘贴原文二创。系统会自动创建内部项目和选题，生成结果直接进入排版编辑区。</p>
         </div>
         <button class="btn btn-ghost btn-sm" :disabled="isArticleGenerating" @click="loadWorkspaceData">刷新项目数据</button>
+      </div>
+
+      <div class="quick-start-grid" aria-label="公众号快速开始">
+        <button
+          v-for="option in quickStartOptions"
+          :key="option.mode"
+          class="quick-start-card"
+          :class="{ active: articleInputMode === option.mode }"
+          type="button"
+          @click="selectQuickStart(option.mode)"
+        >
+          <strong>{{ option.title }}</strong>
+          <span>{{ option.desc }}</span>
+          <small>{{ option.action }}</small>
+        </button>
       </div>
 
       <div class="workbench-grid">
@@ -1068,12 +1220,12 @@ function insertEditorBlock(kind: EditorBlockKind) {
           <label>输入方式
             <select v-model="articleInputMode" class="select wide">
               <option value="topic">主题生成</option>
-              <option value="url">链接二创</option>
+              <option value="url">链接解析二创</option>
               <option value="text">粘贴原文二创</option>
             </select>
           </label>
           <label v-if="articleInputMode === 'topic'">公众号主题<input v-model="articleTheme" class="input" placeholder="输入选题、标题或创作需求" /></label>
-          <label v-else-if="articleInputMode === 'url'">原文链接<input v-model="articleUrl" class="input" placeholder="公众号、网页、知乎、小红书等链接" /></label>
+          <label v-else-if="articleInputMode === 'url'">原文链接<input v-model="articleUrl" class="input" placeholder="粘贴公众号文章、网页、知乎、小红书等链接，系统会先解析再二创" /></label>
           <label v-else>原文内容<textarea v-model="articleSourceText" class="input textarea compact" placeholder="粘贴需要二创的原文、资料或笔记"></textarea></label>
         </div>
 
@@ -1101,8 +1253,8 @@ function insertEditorBlock(kind: EditorBlockKind) {
       </div>
 
       <div class="workbench-actions">
-        <button class="btn btn-primary" :disabled="Boolean(articleGenerateDisabledReason)" @click="handleGenerateWechatArticle">
-          {{ isArticleGenerating ? '生成中...' : '生成公众号文章' }}
+        <button class="btn btn-primary" :disabled="isArticleGenerating" @click="handleGenerateWechatArticle">
+          {{ isArticleGenerating ? '生成中...' : articleInputMode === 'url' ? '解析链接并二创' : articleInputMode === 'text' ? '二创成公众号文章' : '一键生成公众号文章' }}
         </button>
         <button class="btn btn-ghost" :disabled="!platformContentId" @click="saveCurrentArticle">保存当前文章</button>
         <span v-if="generatedArticle" class="article-status">已生成内容 #{{ generatedArticle.contentId }} · {{ generatedArticle.status }}</span>
@@ -1200,25 +1352,28 @@ function insertEditorBlock(kind: EditorBlockKind) {
       </ul>
     </section>
 
-    <section class="wechat-grid">
+    <section class="wechat-grid wechat-editor-layout">
       <article class="wechat-card editor-card">
-        <div class="card-head">
+        <div class="card-head editor-card-head">
           <div>
+            <span class="section-eyebrow">Editor</span>
             <h3>文章内容</h3>
-            <p>编辑正文后，可更新预览并复制排版结果。</p>
+            <p>左侧专注写作，右侧实时预览公众号排版效果。</p>
           </div>
-          <select v-model="style" class="select" @change="handlePreview">
+          <select v-model="style" class="select style-select" aria-label="排版风格" @change="handlePreview">
             <option v-for="item in styleOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
           </select>
         </div>
-        <label>标题<input v-model="title" class="input" placeholder="公众号文章标题" /></label>
-        <div class="inline-fields">
+
+        <div class="editor-meta-grid">
+          <label>标题<input v-model="title" class="input title-input" placeholder="公众号文章标题" /></label>
           <label>作者<input v-model="author" class="input" placeholder="可选" /></label>
           <label>原文链接<input v-model="contentSourceUrl" class="input" placeholder="可选" /></label>
+          <label class="wide">摘要<textarea v-model="digest" class="input textarea compact" placeholder="可选，建议 60-120 字"></textarea></label>
+          <label class="wide">封面图链接<input v-model="coverUrl" class="input" placeholder="粘贴可访问的图片链接；不填则使用正文第一张图或账号默认封面" /></label>
         </div>
-        <label>摘要<textarea v-model="digest" class="input textarea compact" placeholder="可选，建议 60-120 字"></textarea></label>
-        <label>封面图链接<input v-model="coverUrl" class="input" placeholder="粘贴可访问的图片链接；不填则使用正文第一张图或账号默认封面" /></label>
-        <div class="action-row compact-actions">
+
+        <div class="action-row compact-actions cover-actions">
           <button class="btn btn-ghost btn-sm" :disabled="!platformContentId || isCoverGenerating" @click="generateCoverImage">{{ isCoverGenerating ? '生成中...' : '生成封面图' }}</button>
           <button class="btn btn-ghost btn-sm" :disabled="!platformContentId" @click="setCoverImageUrl">使用图片链接作为封面</button>
           <label class="btn btn-ghost btn-sm upload-btn" :class="{ disabled: !platformContentId }">
@@ -1227,12 +1382,32 @@ function insertEditorBlock(kind: EditorBlockKind) {
           </label>
           <span v-if="generatedArticle?.coverAssetId" class="article-status">封面资产 #{{ generatedArticle.coverAssetId }}</span>
         </div>
-        <label>文章正文</label>
-        <div class="wechat-editor-toolbar" aria-label="公众号排版工具栏">
+
+        <div v-if="imageSlotSummary" class="image-slot-status-row" aria-label="正文图片位状态">
+          <span>正文插图 {{ imageSlotSummary.ready }}/{{ imageSlotSummary.total }} 已就绪</span>
+          <span v-if="imageSlotSummary.pending">待处理 {{ imageSlotSummary.pending }}</span>
+          <span v-if="imageSlotSummary.failed" class="slot-failed">失败 {{ imageSlotSummary.failed }}</span>
+        </div>
+
+        <div class="editor-writing-zone">
+          <div class="editor-zone-head">
+            <label>文章正文</label>
+            <div class="editor-mode-switch" role="tablist" aria-label="编辑器模式">
+              <button type="button" class="mode-chip" :class="{ active: editorMode === 'source' }" @click="switchEditorMode('source')">源码</button>
+              <button type="button" class="mode-chip" :class="{ active: editorMode === 'blocks' }" @click="switchEditorMode('blocks')">块编辑</button>
+            </div>
+            <span class="editor-stats">{{ rawContent.length }} 字</span>
+          </div>
+        <div v-if="editorMode === 'source'" class="wechat-editor-toolbar" aria-label="公众号排版工具栏">
           <button class="toolbar-chip" type="button" @click="insertEditorBlock('h2')">二级标题</button>
           <button class="toolbar-chip" type="button" @click="insertEditorBlock('h3')">小标题</button>
           <button class="toolbar-chip" type="button" @click="wrapEditorSelection('**', '**', '重点文字')">加粗</button>
+          <button class="toolbar-chip" type="button" @click="wrapEditorSelection('*', '*', '强调文字')">斜体</button>
+          <button class="toolbar-chip" type="button" @click="wrapEditorSelection('~~', '~~', '删除线')">删除线</button>
           <button class="toolbar-chip" type="button" @click="wrapEditorSelection('==', '==', '高亮重点')">高亮</button>
+          <button class="toolbar-chip" type="button" @click="insertEditorBlock('ul')">无序列表</button>
+          <button class="toolbar-chip" type="button" @click="insertEditorBlock('ol')">有序列表</button>
+          <button class="toolbar-chip" type="button" @click="wrapEditorSelection('[', '](https://example.com)', '链接文字')">超链接</button>
           <button class="toolbar-chip" type="button" @click="insertEditorBlock('quote')">引用卡片</button>
           <button class="toolbar-chip" type="button" @click="insertEditorBlock('golden')">金句卡</button>
           <button class="toolbar-chip" type="button" @click="insertEditorBlock('focus')">重点段落</button>
@@ -1240,16 +1415,35 @@ function insertEditorBlock(kind: EditorBlockKind) {
           <button class="toolbar-chip" type="button" @click="insertEditorBlock('follow')">关注引导</button>
           <button class="toolbar-chip" type="button" @click="insertEditorBlock('recommend')">推荐阅读</button>
         </div>
-        <textarea ref="markdownTextarea" v-model="rawContent" class="input textarea markdown-input" aria-label="文章正文"></textarea>
-        <p class="editor-helper">工具栏会插入公众号兼容 Markdown，点击“更新预览”后转换为内联样式 HTML，发送草稿时仍由后端清洗过滤。</p>
-        <div class="action-row">
+        <textarea v-if="editorMode === 'source'" ref="markdownTextarea" v-model="rawContent" class="input textarea markdown-input" aria-label="文章正文"></textarea>
+        <div v-else class="block-editor">
+          <article v-for="block in contentBlocks" :key="block.id" class="block-card">
+            <div class="block-head">
+              <input v-model="block.title" class="input block-title" aria-label="段落标题" @input="applyBlocksToMarkdown" />
+              <button type="button" class="btn btn-ghost btn-sm" @click="removeContentBlock(block.id)">删除</button>
+            </div>
+            <textarea v-model="block.body" class="input textarea block-body" aria-label="段落正文" @input="applyBlocksToMarkdown" />
+          </article>
+          <button type="button" class="btn btn-ghost" @click="addContentBlock">新增段落</button>
+        </div>
+        <p class="editor-helper">{{ editorMode === 'blocks' ? '块编辑按二级标题分段，适合长文逐段调整；预览和发送前会自动合并为 Markdown。' : '工具栏会插入公众号兼容 Markdown，点击“更新预览”后转换为内联样式 HTML，发送草稿时仍由后端清洗过滤。' }}</p>
+        <div class="action-row editor-actions">
           <button class="btn btn-ghost" @click="copyText(rawContent, '正文')">复制正文</button>
           <button class="btn btn-ghost" :disabled="!formattedHtml" @click="copyText(formattedHtml, '排版结果')">复制排版结果</button>
           <button class="btn btn-ghost" :disabled="!platformContentId" @click="insertImageAtCursor">在光标处插图</button>
         </div>
+        </div>
       </article>
 
       <article class="wechat-card preview-card">
+        <div class="preview-card-head">
+          <div>
+            <span class="section-eyebrow">Preview</span>
+            <h3>公众号预览</h3>
+            <p>模拟手机阅读效果，发送前请确认标题、摘要和配图。</p>
+          </div>
+          <button class="btn btn-ghost btn-sm" :disabled="isLoading" @click="handlePreview">刷新预览</button>
+        </div>
         <div class="phone-frame">
           <div class="phone-status"><span>公众号预览</span><span>{{ selectedAccount?.name || '未选择账号' }}</span></div>
           <div class="article-preview">
@@ -1259,7 +1453,7 @@ function insertEditorBlock(kind: EditorBlockKind) {
               v-if="formattedHtml"
               class="rendered-frame"
               title="公众号排版预览"
-              sandbox=""
+              sandbox="allow-same-origin"
               :srcdoc="previewSrcdoc"
             ></iframe>
             <div v-else class="empty-preview">点击“更新预览”生成公众号排版效果。</div>
@@ -1409,6 +1603,154 @@ function insertEditorBlock(kind: EditorBlockKind) {
   align-items: start;
 }
 
+.wechat-editor-layout {
+  grid-template-columns: minmax(420px, 1.15fr) minmax(360px, 0.85fr);
+  gap: 20px;
+}
+
+.editor-card-head .style-select {
+  min-width: 140px;
+}
+
+.editor-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.editor-meta-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.title-input {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.cover-actions {
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.editor-writing-zone {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 20px;
+  background: #f8fafc;
+}
+
+.editor-zone-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.editor-zone-head label {
+  margin: 0;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.editor-stats {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.preview-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+
+.preview-card-head h3 {
+  margin: 4px 0 6px;
+  font-size: 18px;
+}
+
+.preview-card-head p {
+  margin: 0;
+  max-width: 280px;
+}
+
+.image-slot-status-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 14px;
+  background: rgba(239, 246, 255, 0.72);
+  color: #1e40af;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.image-slot-status-row .slot-failed {
+  color: #b91c1c;
+}
+
+.editor-mode-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #eef2f7;
+}
+
+.mode-chip {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.mode-chip.active {
+  background: #fff;
+  color: #2457ff;
+  box-shadow: inset 0 0 0 1px #dbe6ff;
+}
+
+.block-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.block-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.block-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.block-title {
+  flex: 1;
+  font-weight: 800;
+}
+
+.block-body {
+  min-height: 120px;
+  line-height: 1.75;
+}
+
 .wechat-side {
   grid-column: 1 / -1;
 }
@@ -1422,6 +1764,50 @@ function insertEditorBlock(kind: EditorBlockKind) {
   display: grid;
   grid-template-columns: repeat(2, minmax(220px, 1fr));
   gap: 14px;
+}
+
+.quick-start-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.quick-start-card {
+  display: grid;
+  gap: 7px;
+  min-height: 118px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 18px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+  color: #0f172a;
+  cursor: pointer;
+  padding: 16px;
+  text-align: left;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.quick-start-card:hover,
+.quick-start-card.active {
+  border-color: rgba(37, 99, 235, 0.58);
+  box-shadow: 0 14px 32px rgba(37, 99, 235, 0.12);
+  transform: translateY(-1px);
+}
+
+.quick-start-card strong {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.quick-start-card span,
+.quick-start-card small {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.quick-start-card small {
+  color: #2563eb;
+  font-weight: 900;
 }
 
 .workbench-column:nth-child(3) {
@@ -1607,9 +1993,20 @@ label {
 }
 
 .markdown-input {
-  min-height: 420px;
+  min-height: 480px;
+  padding: 16px 18px;
+  border-color: rgba(15, 23, 42, 0.1);
+  background: #fff;
+  color: #111827;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  line-height: 1.7;
+  font-size: 15px;
+  line-height: 1.85;
+  letter-spacing: 0.01em;
+}
+
+.markdown-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
 .wechat-editor-toolbar {
@@ -1863,6 +2260,9 @@ label {
 
 @media (max-width: 1180px) {
   .wechat-grid,
+  .wechat-editor-layout,
+  .editor-meta-grid,
+  .quick-start-grid,
   .workbench-grid,
   .workbench-side-lists {
     grid-template-columns: 1fr;

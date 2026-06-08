@@ -25,6 +25,7 @@ from models.persona import (
     SprintTopic,
     UserAccount,
 )
+from services.ip_asset_generator import generate_ip_asset_section
 
 
 router = APIRouter(tags=["Sprint全案底座"])
@@ -54,6 +55,13 @@ class IpAssetCreate(BaseModel):
     visualStyle: str = ""
     conversionPath: str = ""
     forbiddenExpressions: str = ""
+
+
+class IpAssetSectionGenerateRequest(BaseModel):
+    section: str
+    templateKey: str = ""
+    mode: str = "smart"
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 class StrategyGenerateRequest(BaseModel):
@@ -207,6 +215,34 @@ def create_task(
     db.add(task)
     db.flush()
     return task
+
+
+@router.get("/api/ip-assets/section-templates", summary="获取 IP 档案分步模板")
+async def list_ip_asset_section_templates(
+    user: UserAccount = Depends(get_current_user),
+):
+    del user
+    from services.ip_asset_generator import SECTION_TEMPLATES
+
+    return {"code": 0, "data": SECTION_TEMPLATES}
+
+
+@router.post("/api/ip-assets/generate-section", summary="生成 IP 档案分步内容")
+async def generate_ip_asset_section_route(
+    data: IpAssetSectionGenerateRequest,
+    user: UserAccount = Depends(get_current_user),
+):
+    del user
+    try:
+        result = await generate_ip_asset_section(
+            section=data.section,
+            context=data.context,
+            template_key=data.templateKey,
+            mode=data.mode or "smart",
+        )
+    except ValueError as exc:
+        fail(400, "VALIDATION_ERROR", str(exc), "请检查 section 参数。")
+    return {"code": 0, "data": result, "message": "生成成功"}
 
 
 @router.post("/api/ip-assets", summary="创建IP资产")

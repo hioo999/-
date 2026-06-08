@@ -10,7 +10,9 @@ import json
 import os
 import re
 import socket
+import struct
 import time
+import zlib
 from dataclasses import dataclass
 from typing import Any, Callable
 from urllib.parse import urljoin, urlparse
@@ -26,6 +28,7 @@ TOKEN_TTL_SECONDS = 6800
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_BODY_IMAGES = 20
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+IMAGE_TYPE_ALIASES = {"image/jpg": "image/jpeg"}
 _TOKEN_CACHE: dict[str, tuple[str, float]] = {}
 
 MaterialLookup = Callable[[str, str], dict[str, str] | None]
@@ -277,12 +280,12 @@ async def probe_wechat_capabilities(token: str) -> list[dict[str, Any]]:
         except Exception as exc:
             await add_check("cover_material_api", False, f"永久素材接口检测失败：{exc}")
 
-        tiny_png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=")
+        probe_png = _build_probe_png()
         try:
             upload_response = await client.post(
                 f"{WECHAT_API}/media/uploadimg",
                 params={"access_token": token},
-                files={"media": ("permission-probe.png", tiny_png, "image/png")},
+                files={"media": ("permission-probe.png", probe_png, "image/png")},
             )
             upload_data = upload_response.json()
             if upload_data.get("errcode"):
@@ -310,6 +313,26 @@ async def probe_wechat_capabilities(token: str) -> list[dict[str, Any]]:
             await add_check("draft_add", False, f"草稿接口检测失败：{exc}")
 
     return checks
+
+
+def _build_probe_png(size: int = 240) -> bytes:
+    """Build a simple RGB PNG large enough for WeChat upload probes."""
+
+    safe_size = max(120, min(size, 1024))
+    raw_rows = []
+    for y in range(safe_size):
+        row = bytearray([0])
+        for x in range(safe_size):
+            row.extend((37, 99 + ((x + y) % 40), 235))
+        raw_rows.append(bytes(row))
+    raw = b"".join(raw_rows)
+
+    def chunk(kind: bytes, payload: bytes) -> bytes:
+        crc = zlib.crc32(kind + payload) & 0xFFFFFFFF
+        return struct.pack("!I", len(payload)) + kind + payload + struct.pack("!I", crc)
+
+    ihdr = struct.pack("!IIBBBBB", safe_size, safe_size, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b"")
 
 
 async def publish_markdown_to_draft(
@@ -523,7 +546,7 @@ async def _safe_download_bytes(url: str, max_redirects: int = 3) -> tuple[str, s
                     continue
                 if response.status_code >= 400:
                     raise WechatPublishError("image_download_failed", f"图片下载失败（HTTP {response.status_code}）：{current}")
-                content_type = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
+                content_type = _normalize_image_content_type(response.headers.get("content-type") or "")
                 if content_type not in ALLOWED_IMAGE_TYPES:
                     raise WechatPublishError("image_type_not_allowed", f"仅支持 JPG/PNG/GIF/WebP 图片，当前类型：{content_type or '未知'}")
                 content_length = response.headers.get("content-length")
@@ -536,6 +559,11 @@ async def _safe_download_bytes(url: str, max_redirects: int = 3) -> tuple[str, s
                         raise WechatPublishError("image_too_large", "图片大小不能超过 5MB")
                 return current, content_type, content
     raise WechatPublishError("image_redirect_too_many", "图片地址重定向次数过多")
+
+
+def _normalize_image_content_type(value: str) -> str:
+    content_type = (value or "").split(";")[0].strip().lower()
+    return IMAGE_TYPE_ALIASES.get(content_type, content_type)
 
 
 def _safe_render_api_base(api_base: str) -> str:

@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>3.19抗炎季直播台本</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #0a1628 0%, #132238 50%, #0d2117 100%);
+            color: #fff;
+            line-height: 1.8;
+            padding-bottom: 80px;
+        }
+
+        .top-nav {
+            position: fixed; top: 0; left: 0; right: 0;
+            background: rgba(10, 22, 40, 0.96);
+            backdrop-filter: blur(12px);
+            z-index: 1000; padding: 10px 15px;
+            border-bottom: 1px solid rgba(46, 204, 113, 0.3);
+        }
+        .top-nav h1 { font-size: 16px; text-align: center; color: #2ecc71; }
+        .top-nav .subtitle { font-size: 11px; text-align: center; color: #888; margin-top: 2px; }
+
+        .time-display {
+            position: fixed; top: 48px; right: 15px;
+            background: #27ae60; color: #fff;
+            padding: 4px 12px; border-radius: 20px;
+            font-size: 13px; font-weight: bold; z-index: 1001;
+        }
+
+        .gmv-display {
+            position: fixed; top: 48px; left: 15px;
+            background: #e74c3c; color: #fff;
+            padding: 4px 12px; border-radius: 20px;
+            font-size: 13px; font-weight: bold; z-index: 1001;
+        }
+
+        .quick-nav {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: rgba(10, 22, 40, 0.98);
+            backdrop-filter: blur(12px);
+            z-index: 1000; display: flex;
+            overflow-x: auto; padding: 8px; gap: 8px;
+            border-top: 1px solid rgba(46, 204, 113, 0.3);
+        }
+        .quick-nav::-webkit-scrollbar { display: none; }
+
+        .nav-btn {
+            flex-shrink: 0; padding: 8px 14px;
+            background: #1a2d3d; border: 1px solid #2a3d4d;
+            border-radius: 20px; color: #ccc;
+            font-size: 12px; cursor: pointer; white-space: nowrap;
+            transition: all 0.3s;
+        }
+        .nav-btn.active { background: #27ae60; color: #fff; border-color: #27ae60; }
+        .nav-btn.highlight {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: #fff; border-color: #e74c3c;
+            animation: pulse 2s infinite;
+        }
+        .nav-btn.green-highlight {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            color: #fff; border-color: #27ae60;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .container { max-width: 800px; margin: 0 auto; padding: 75px 15px 20px; }
+
+        .time-section { margin-bottom: 25px; scroll-margin-top: 80px; }
+
+        .time-header {
+            background: linear-gradient(135deg, #27ae60, #1a8c4e);
+            padding: 14px 18px; border-radius: 14px 14px 0 0;
+            position: sticky; top: 52px; z-index: 100;
+        }
+        .time-header h2 {
+            font-size: 17px; display: flex;
+            align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        .time-header .time-tag {
+            background: rgba(255,255,255,0.2);
+            padding: 2px 10px; border-radius: 10px; font-size: 13px;
+        }
+        .time-header .goal-tag {
+            background: #ffd700; color: #000;
+            padding: 2px 10px; border-radius: 10px;
+            font-size: 11px; margin-left: auto; font-weight: bold;
+        }
+
+        .product-card {
+            background: #111d2b; border-radius: 0 0 14px 14px;
+            margin-bottom: 18px; overflow: hidden;
+            border: 1px solid #1a2d3d; border-top: none;
+        }
+        .product-header {
+            background: linear-gradient(135deg, #1a2d3d, #0f1f2e);
+            padding: 14px 18px; border-bottom: 1px solid #1a2d3d;
+        }
+        .product-name { font-size: 18px; font-weight: bold; color: #2ecc71; }
+        .product-price { font-size: 28px; color: #e74c3c; font-weight: bold; margin-top: 4px; }
+        .product-original { font-size: 13px; color: #888; text-decoration: line-through; margin-left: 10px; }
+        .product-tags { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+        .tag { padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+        .tag.hot { background: #e74c3c; }
+        .tag.save { background: #27ae60; }
+        .tag.time { background: #3498db; }
+        .tag.gift { background: #9b59b6; }
+        .tag.new { background: linear-gradient(135deg, #f39c12, #e67e22); }
+
+        .script-section { padding: 14px 18px; border-bottom: 1px solid #1a2d3d; }
+        .script-section:last-child { border-bottom: none; }
+        .section-title {
+            font-size: 13px; color: #888; margin-bottom: 8px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .section-title::before {
+            content: ''; width: 3px; height: 14px;
+            background: #27ae60; border-radius: 2px;
+        }
+        .script-content { font-size: 15px; line-height: 2; }
+
+        .highlight { color: #2ecc71; font-weight: bold; }
+        .highlight-gold { color: #ffd700; font-weight: bold; }
+        .price-highlight { color: #e74c3c; font-size: 20px; font-weight: bold; }
+        .action { color: #3498db; font-style: italic; }
+        .pause {
+            display: inline-block; background: #9b59b6; color: #fff;
+            padding: 1px 8px; border-radius: 4px; font-size: 11px; margin: 0 4px;
+        }
+        .volume-up {
+            display: inline-block; background: #e74c3c; color: #fff;
+            padding: 1px 8px; border-radius: 4px; font-size: 11px; margin: 0 4px;
+        }
+        .slow {
+            display: inline-block; background: #3498db; color: #fff;
+            padding: 1px 8px; border-radius: 4px; font-size: 11px; margin: 0 4px;
+        }
+
+        .golden-quote {
+            background: linear-gradient(135deg, #27ae60, #1a8c4e);
+            padding: 14px 18px; border-radius: 10px;
+            margin: 12px 0; text-align: center;
+            font-size: 17px; font-weight: bold; color: #fff;
+        }
+
+        .countdown {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            padding: 16px; border-radius: 10px;
+            text-align: center; font-size: 22px; font-weight: bold;
+            margin: 12px 0; animation: pulse 1s infinite;
+        }
+
+        .benefit-reminder {
+            background: linear-gradient(135deg, #1a8c4e, #27ae60);
+            padding: 14px 18px; border-radius: 12px; margin: 18px 0;
+        }
+        .benefit-reminder h3 { color: #ffd700; margin-bottom: 8px; font-size: 16px; }
+        .benefit-reminder ul { list-style: none; padding-left: 0; }
+        .benefit-reminder li { padding: 4px 0 4px 25px; position: relative; }
+        .benefit-reminder li::before { content: '🎁'; position: absolute; left: 0; }
+
+        .benefits-card {
+            background: linear-gradient(135deg, #0d6b3d, #27ae60);
+            padding: 18px; border-radius: 14px; margin: 18px 0;
+        }
+        .benefits-card h3 { text-align: center; margin-bottom: 12px; font-size: 17px; color: #fff; }
+        .benefit-item {
+            background: rgba(0,0,0,0.25); padding: 10px 14px;
+            border-radius: 8px; margin-bottom: 7px;
+            display: flex; align-items: center; gap: 10px; font-size: 14px;
+        }
+        .benefit-icon { font-size: 18px; }
+
+        .first-launch {
+            border: 2px solid #ffd700 !important;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.15);
+        }
+        .first-launch .product-header {
+            background: linear-gradient(135deg, #2d1810, #1a0a05) !important;
+        }
+        .first-launch .product-name { color: #ffd700 !important; }
+
+        .info-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+        .info-table th, .info-table td { padding: 8px 10px; border: 1px solid #1a2d3d; text-align: left; }
+        .info-table th { background: #1a2d3d; color: #2ecc71; font-size: 12px; }
+        .info-table tr:nth-child(even) { background: rgba(255,255,255,0.03); }
+
+        .must-remember {
+            background: linear-gradient(135deg, #1a8c4e, #27ae60);
+            padding: 18px; border-radius: 14px; margin: 18px 0;
+        }
+        .must-remember h3 { text-align: center; margin-bottom: 12px; font-size: 17px; }
+        .must-remember-item {
+            background: rgba(0,0,0,0.3); padding: 12px;
+            border-radius: 10px; margin-bottom: 8px;
+        }
+        .must-remember-item .product { color: #ffd700; font-weight: bold; font-size: 15px; }
+        .must-remember-item .script { font-size: 14px; margin-top: 5px; line-height: 1.6; }
+
+        .host-tag {
+            display: inline-block; padding: 1px 8px; border-radius: 4px;
+            font-size: 11px; margin-right: 4px; font-weight: bold;
+        }
+        .host-xx { background: #e91e63; }
+        .host-yk { background: #ff9800; }
+
+        .divider {
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(46,204,113,0.3), transparent);
+            margin: 25px 0;
+        }
+
+        .back-top {
+            position: fixed; bottom: 75px; right: 15px;
+            width: 44px; height: 44px;
+            background: linear-gradient(135deg, #27ae60, #1a8c4e);
+            border-radius: 50%; display: flex;
+            align-items: center; justify-content: center;
+            font-size: 18px; cursor: pointer; z-index: 999;
+            box-shadow: 0 4px 12px rgba(39, 174, 96, 0.4);
+        }
+
+        .duo-host-note {
+            background: rgba(46,204,113,0.1);
+            border: 1px solid rgba(46,204,113,0.2);
+            border-radius: 8px; padding: 10px 14px;
+            margin: 10px 0; font-size: 13px; color: #aaa;
+        }
+    </style>
+</head>
+<body>
+
+<div class="top-nav">
+    <h1>🌿 3.19 抗炎季直播台本</h1>
+    <div class="subtitle">换季泛红？爆痘？刺痛？帮你搞定 ｜ 萱萱 & YK</div>
+</div>
+
+<div class="gmv-display">目标 8W</div>
+<div class="time-display" id="timeDisplay">20:00</div>
+
+<div class="container">
+
+<!-- ==================== 开场预热 ==================== -->
+<section class="time-section" id="section-opening">
+    <div class="time-header">
+        <h2>
+            <span>📢 开场预热</span>
+            <span class="time-tag">20:00-20:10</span>
+            <span class="goal-tag">拉人气</span>
+        </h2>
+    </div>
+    <div class="product-card">
+        <div class="script-section">
+            <div class="section-title">开场话术</div>
+            <div class="script-content">
+                <p><span class="action">👋 热情挥手，双人出镜</span></p>
+                <p><span class="host-tag host-xx">萱萱</span>哈啰姐妹们！欢迎来到瑞小美直播间！我是萱萱！</p>
+                <p><span class="host-tag host-yk">YK</span>大家好我是YK！今晚我们俩一起陪大家！</p>
+                <p><span class="host-tag host-xx">萱萱</span>姐妹们！最近是不是被换季折磨惨了？<span class="pause">停顿</span></p>
+                <p>脸上动不动就泛红？刺痛？爆痘？上妆卡粉脱皮？</p>
+                <p>有同感的姐妹扣个<span class="highlight">"1"</span>让我看看！</p>
+                <p><span class="host-tag host-yk">YK</span>我就说嘛！换季就是皮肤的"渡劫期"！</p>
+                <p><span class="host-tag host-xx">萱萱</span>所以今晚我们特别策划了——<span class="pause">停顿</span></p>
+                <p><span class="volume-up">提高音量</span> <span class="highlight-gold">抗炎季专场！</span></p>
+                <p>专治换季泛红、爆痘、屏障受损！从源头搞定皮肤炎症问题！</p>
+                <p>而且今晚还有一个<span class="highlight-gold">重磅首发</span>要官宣——先卖个关子，等会儿揭晓！</p>
+            </div>
+        </div>
+
+        <div class="benefits-card" style="margin: 14px;">
+            <h3>🎁 今晚福利</h3>
+            <div class="benefit-item">
+                <span class="benefit-icon">💡</span>
+                <span><b>观看礼</b>：看满15分钟，送红光/蓝光/黄光 3选1（1次）</span>
+            </div>
+            <div class="benefit-item">
+                <span class="benefit-icon">👯</span>
+                <span><b>邀请礼</b>：邀请好友进直播间，至高累积1万积分</span>
+            </div>
+            <div class="benefit-item">
+                <span class="benefit-icon">💬</span>
+                <span><b>互动礼</b>：直播间积极互动，有机会获得精美礼品1份</span>
+            </div>
+            <div class="benefit-item">
+                <span class="benefit-icon">⭐</span>
+                <span><b>银河会员</b>实付享最高10倍积分 + 会员升级礼</span>
+            </div>
+        </div>
+
+        <div class="script-section">
+            <div class="section-title">福利引导话术</div>
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>先说福利！今晚只要在直播间<span class="highlight">看满15分钟</span>，就送你一次红光、蓝光或黄光！三选一！</p>
+                <p>红光消炎修复、蓝光控油祛痘、黄光舒缓退红——换季肌肤都用得上！</p>
+                <p><span class="host-tag host-yk">YK</span>邀请好友进来看，还能攒积分！最高1万分哦！在直播间多互动，也有机会拿到小礼物！</p>
+                <p><span class="host-tag host-xx">萱萱</span>还没关注的姐妹先点个关注，别等会儿刷走了找不到我们！好了——上硬货！</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ==================== 春日抗炎修复卡 ==================== -->
+<section class="time-section" id="section-card499">
+    <div class="time-header" style="background: linear-gradient(135deg, #e74c3c, #c0392b);">
+        <h2>
+            <span>🔥 主推引流爆款</span>
+            <span class="time-tag">20:10-20:30</span>
+            <span class="goal-tag">冲单量</span>
+        </h2>
+    </div>
+
+    <div class="product-card" style="border: 2px solid #e74c3c;">
+        <div class="product-header" style="background: linear-gradient(135deg, #5c1a1a, #2d0e0e);">
+            <div class="product-name" style="color: #e74c3c;">【主推】春日抗炎修复卡</div>
+            <div class="product-price">¥499 <span class="product-original">¥1,378</span></div>
+            <div class="product-tags">
+                <span class="tag hot">🔥 主推爆款</span>
+                <span class="tag save">立省¥879</span>
+                <span class="tag gift">权益2选1</span>
+            </div>
+        </div>
+
+        <div class="script-section">
+            <div class="section-title">权益说明</div>
+            <div class="script-content">
+                <p style="font-size: 14px; background: rgba(231,76,60,0.1); padding: 10px; border-radius: 8px;">
+                    <b>权益一</b>：普丽兰修复再生2.0 + 红蓝光/黄极光<br>
+                    <b>权益二</b>：可当 <span class="highlight">¥1,180抵扣</span> 德菲林鱼子套组
+                </p>
+            </div>
+        </div>
+
+        <div class="script-section">
+            <div class="section-title">痛点场景化</div>
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>姐妹们！先问你们几个问题——</p>
+                <p>最近洗完脸是不是脸颊发红、刺刺的？<span class="pause">停顿</span></p>
+                <p>上妆卡粉、起皮、一到下午就斑驳？<span class="pause">停顿</span></p>
+                <p>额头、下巴动不动就冒痘？之前不长痘的地方也开始冒了？</p>
+                <p>有的姐妹扣<span class="highlight">"救命"</span>让我看看！</p>
+                <p><span class="host-tag host-yk">YK</span>姐妹，这些都是换季导致的<span class="highlight">皮肤屏障受损 + 炎症反应</span>！</p>
+                <p>光靠护肤品敷面膜是压不住的！需要专业的抗炎修复！</p>
+            </div>
+        </div>
+
+        <div class="script-section">
+            <div class="section-title">价值塑造</div>
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>这张卡有<span class="highlight">两种权益</span>可以选——</p>
+                <p><b>权益一</b>：做一次<span class="highlight">普丽兰修复再生2.0</span>，再加一次红蓝光或者黄极光！</p>
+                <p>普丽兰是专业的修复再生水光，直接修复受损的屏障！红蓝光消炎祛痘，黄极光舒缓退红！</p>
+                <p>两个项目打配合，内修屏障+外控炎症，一套下来换季问题基本搞定！</p>
+                <p><span class="host-tag host-yk">YK</span><b>权益二</b>更厉害！如果你想做我们今晚首发的<span class="highlight-gold">德菲林鱼子套组</span>——</p>
+                <p>这张卡可以当<span class="highlight">¥1,180来抵扣</span>！等于你花499买了张1180的抵扣券！</p>
+                <p>怎么选都不亏！</p>
+            </div>
+        </div>
+
+        <div class="golden-quote">
+            💡 499买一张"皮肤急救卡"，换季烂脸的救命稻草！
+        </div>
+
+        <div class="script-section">
+            <div class="section-title">价格揭晓 🔥</div>
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>这两个项目日常分别做要多少钱？</p>
+                <p>普丽兰单次就要998！红蓝光/黄极光380起！加起来差不多<span class="highlight">1378</span>！</p>
+                <p><span class="pause">停顿2秒</span> <span class="action">深吸气</span></p>
+                <p>今天抗炎季专场——<span class="slow">放慢</span></p>
+                <p><span class="volume-up">提高音量</span> <span class="price-highlight">只要499！！</span></p>
+                <p><span class="highlight">立省879！打了3.6折！</span></p>
+                <p><span class="host-tag host-yk">YK</span>499块钱！一顿火锅的钱！解决你整个换季的皮肤问题！</p>
+                <p>而且选权益二的话，等于白送你一张1180的抵扣券！<span class="highlight">倒赚681！</span></p>
+            </div>
+        </div>
+
+        <div class="script-section">
+            <div class="section-title">消除顾虑 + 逼单</div>
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>不确定选哪个权益？先拍下来<span class="highlight">锁定价格</span>！到店再选！</p>
+                <p>到店先免费做皮肤检测，让专业咨询师帮你判断选哪个更适合！</p>
+                <p>不满意？<span class="highlight">全额退款</span>！零风险！</p>
+                <p><span class="host-tag host-yk">YK</span>这个价格就今天有！明天恢复1378！犹豫就没了！</p>
+            </div>
+        </div>
+
+        <div class="countdown">
+            🔥 499抗炎修复卡！5——4——3——2——1——上链接！！！
+        </div>
+
+        <div class="script-section">
+            <div class="section-title">追单话术（循环使用）</div>
+            <div class="script-content">
+                <p>还在犹豫的姐妹！<span class="highlight">499！全年抗炎季才有的价格！</span></p>
+                <p>你想想，换季烂脸去医院看皮肤科，挂号+开药少说也要三四百！</p>
+                <p>现在499做专业修复+光疗，还能当1180抵扣券用！怎么算都超值！</p>
+                <p>银河会员下单还有<span class="highlight">10倍积分</span>！越早买越划算！</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ==================== 德菲林鱼子套组 首发 ==================== -->
+<section class="time-section" id="section-dfl">
+    <div class="time-header" style="background: linear-gradient(135deg, #b8860b, #8B6914);">
+        <h2>
+            <span>⭐ 重磅首发 · 德菲林鱼子奢护套组</span>
+            <span class="time-tag">20:30-21:10</span>
+            <span class="goal-tag">首发冲量</span>
+        </h2>
+    </div>
+
+    <div class="product-card first-launch">
+        <div class="script-section">
+            <div class="section-title">首发官宣 🎉</div>
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>好！姐妹们！接下来——<span class="pause">停顿</span></p>
+                <p>就是我刚才说的那个<span class="highlight-gold">重磅首发</span>！</p>
+                <p><span class="action">郑重其事</span></p>
+                <p><span class="host-tag host-yk">YK</span>这个品我们筹备了很久，今晚是在瑞小美直播间的<span class="highlight-gold">首次发售</span>！</p>
+                <p><span class="host-tag host-xx">萱萱</span>它就是——<span class="slow">拉长</span></p>
+                <p style="font-size: 22px; text-align: center;"><span class="highlight-gold">德菲林315鱼子奢护套组！</span></p>
+                <p style="text-align: center; font-size: 14px; color: #ffd700;">3分钟速修褪红 · 15天愈炎新生 · 全时防护 · 全层抗炎</p>
+            </div>
+        </div>
+
+        <div class="script-section">
+            <div class="section-title">产品科普</div>
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>姐妹们，德菲林是什么来头？</p>
+                <p>它的核心成分是<span class="highlight">PDRN</span>——多聚脱氧核糖核苷酸！</p>
+                <p>听着复杂对不对？简单说就是从<span class="highlight">大西洋野生三文鱼</span>身上提取的DNA修复成分！</p>
+                <p><span class="host-tag host-yk">YK</span>它能做什么呢？三个字——<span class="highlight">抗炎、修复、再生</span>！</p>
+                <p>皮肤发红发炎？它帮你<span class="highlight">消炎</span>！</p>
+                <p>屏障受损脆弱？它帮你<span class="highlight">修复</span>！</p>
+                <p>胶原流失老化？它帮你<span class="highlight">再生</span>！</p>
+            </div>
+        </div>
+
+        <div class="script-section">
+            <div class="section-title">核心卖点</div>
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>市面上PDRN产品那么多，德菲林凭什么值得选？四个字——<span class="highlight-gold">高浓高纯</span>！</p>
+                <p>第一，<span class="highlight">2%高浓度</span>——同比1%浓度产品，抗炎修复疗效增强1.7倍！效果更快更明显！</p>
+                <p>第二，<span class="highlight">99%高纯度</span>——无鱼类蛋白残留，敏感肌也能放心用！</p>
+                <p>第三，<span class="highlight">3G大剂量</span>——别家2ml，它3g，单次用量更足！</p>
+                <p><span class="host-tag host-yk">YK</span>而且它不是单一PDRN！是一整套<span class="highlight-gold">"安卡十字修护体系"</span>——</p>
+                <p>PDRN再生修复 + 5D透明质酸立体保湿 + 依克多因抗炎维稳 + 海藻糖抗损抗氧！</p>
+                <p>由表及里、全层抗炎！市面上很少有这么全面的配方体系！</p>
+                <p><span class="host-tag host-xx">萱萱</span>最后！它是<span class="highlight">欧洲进口</span>，通过美国FDA和法国ANSM双重GMP认证！品质横跨欧美监管标准！</p>
+            </div>
+        </div>
+
+        <div class="script-section">
+            <div class="section-title">套组说明</div>
+            <div class="script-content">
+                <p><span class="host-tag host-yk">YK</span>这个套组包含<span class="highlight">中胚美塑产品 + 鱼子奢护精华</span>，"三分治疗、七分养护"！</p>
+                <p>做完项目后，再用鱼子精华做院内导入——舒缓、修复、维养一步到位！</p>
+                <p>不是做完就走，而是<span class="highlight">全周期呵护</span>！</p>
+            </div>
+        </div>
+
+        <div class="golden-quote" style="background: linear-gradient(135deg, #b8860b, #8B6914);">
+            ✨ 抗衰先抗炎！3分钟速修褪红，15天愈炎新生！
+        </div>
+    </div>
+
+    <!-- 德菲林 1组 -->
+    <div class="product-card first-launch" id="product-dfl1">
+        <div class="product-header" style="background: linear-gradient(135deg, #2d1810, #1a0a05);">
+            <div class="product-name" style="color: #ffd700;">德菲林315鱼子奢护套组 · 体验装</div>
+            <div class="product-price">¥1,980 <span class="product-original">¥2,980</span></div>
+            <div class="product-tags">
+                <span class="tag new">✨ 首发</span>
+                <span class="tag save">立省¥1,000</span>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>先来体验装！<span class="highlight">1组</span>，日常2980，首发价<span class="price-highlight">1980！省1000！</span></p>
+                <p>第一次想试试的姐妹，买这个就对了！</p>
+                <p>刚才拍了499抗炎修复卡选权益二的姐妹——可以直接<span class="highlight">抵扣1180</span>！</p>
+                <p>等于你实际只花<span class="price-highlight">¥800</span>就能做一次德菲林！</p>
+            </div>
+        </div>
+        <div class="countdown">🔥 5——4——3——2——1——上链接！</div>
+    </div>
+
+    <!-- 德菲林 3组 -->
+    <div class="product-card first-launch" id="product-dfl3">
+        <div class="product-header" style="background: linear-gradient(135deg, #2d1810, #1a0a05);">
+            <div class="product-name" style="color: #ffd700;">德菲林315鱼子奢护套组 · 疗程装</div>
+            <div class="product-price">¥4,980 <span class="product-original">¥8,940</span></div>
+            <div class="product-tags">
+                <span class="tag new">✨ 首发</span>
+                <span class="tag save">立省¥3,960</span>
+                <span class="tag gift">买3组送1组</span>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="script-content">
+                <p><span class="host-tag host-yk">YK</span>想做疗程的姐妹看这个！<span class="highlight">买3组，首发期额外加赠1组正装</span>！</p>
+                <p>等于4组只要4980！平均<span class="price-highlight">每组才¥1,245</span>！</p>
+                <p>PDRN修复是需要疗程的，连续做效果叠加更明显！</p>
+            </div>
+        </div>
+        <div class="countdown">🔥 5——4——3——2——1——上链接！</div>
+    </div>
+
+    <!-- 德菲林 6组 -->
+    <div class="product-card first-launch" id="product-dfl6">
+        <div class="product-header" style="background: linear-gradient(135deg, #2d1810, #1a0a05);">
+            <div class="product-name" style="color: #ffd700;">德菲林315鱼子奢护套组 · 尊享装 ⭐</div>
+            <div class="product-price">¥8,800 <span class="product-original">¥17,880</span></div>
+            <div class="product-tags">
+                <span class="tag new">✨ 首发</span>
+                <span class="tag save">立省¥9,080</span>
+                <span class="tag gift">买6组送3组</span>
+                <span class="tag hot">🔥 最划算</span>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>终极大招来了！<span class="highlight">买6组，额外送3组正装</span>！等于<span class="highlight-gold">9组只要8800</span>！</p>
+                <p>平均每组不到<span class="price-highlight">¥978</span>！比单买省了<span class="highlight">9080</span>！直接打了<span class="highlight">4.9折</span>！</p>
+                <p><span class="host-tag host-yk">YK</span>9组可以做大半年的疗程维养了！皮肤问题交给德菲林，全周期管理！</p>
+                <p>这个价格只有首发才有！过了今天就恢复原价！</p>
+            </div>
+        </div>
+
+        <div class="benefit-reminder" style="margin: 12px 14px; background: linear-gradient(135deg, #b8860b, #8B6914);">
+            <h3>💡 德菲林怎么选？</h3>
+            <ul>
+                <li>想先体验 → <b>1组 ¥1,980</b>（搭配499卡抵扣更划算）</li>
+                <li>想做疗程 → <b>3组 ¥4,980</b>（送1组，实得4组）</li>
+                <li>长期维养 → <b>6组 ¥8,800</b>（送3组，实得9组，最划算）</li>
+            </ul>
+        </div>
+
+        <div class="countdown" style="font-size: 24px;">
+            ✨ 首发限时！错过今天恢复原价！<br>
+            🔥 5——4——3——2——1——上链接！！！
+        </div>
+    </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ==================== 杜莎之谜系列 ==================== -->
+<section class="time-section" id="section-dusza">
+    <div class="time-header" style="background: linear-gradient(135deg, #8e44ad, #6c3483);">
+        <h2>
+            <span>💧 杜莎之谜水光系列</span>
+            <span class="time-tag">21:10-21:30</span>
+            <span class="goal-tag">转化</span>
+        </h2>
+    </div>
+
+    <div class="product-card">
+        <div class="script-section">
+            <div class="section-title">系列引入</div>
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>德菲林讲完了！接下来换个方向——</p>
+                <p>刚才说的是术后修复养护，那<span class="highlight">针对性的功效水光</span>呢？</p>
+                <p>杜莎之谜系列！按颜色分功效，对号入座选就行！</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 小黑瓶 -->
+    <div class="product-card" id="product-black">
+        <div class="product-header">
+            <div class="product-name">杜莎之谜 · 小黑瓶</div>
+            <div class="product-price">¥1,280 <span class="product-original">¥1,680</span></div>
+            <div class="product-tags">
+                <span class="tag hot">抑敏去红</span>
+                <span class="tag save">立省¥400</span>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="script-content">
+                <p><span class="host-tag host-yk">YK</span>小黑瓶——<span class="highlight">抑敏去红、改善色沉、抗氧化</span>！</p>
+                <p>核心成分：PEG、PN、甘草酸、超C、烟酰胺、氨甲环酸！</p>
+                <p>适合什么人？<span class="highlight">炎症性黄褐斑、光电术后色沉、玫瑰痤疮早期</span>！</p>
+                <p>脸上有斑、有色沉的姐妹，选它！日常1680，今天<span class="price-highlight">只要1280！</span></p>
+            </div>
+        </div>
+        <div class="countdown">🔥 5、4、3、2、1，上链接！</div>
+    </div>
+
+    <!-- 小红瓶 -->
+    <div class="product-card" id="product-red">
+        <div class="product-header">
+            <div class="product-name">杜莎之谜 · 小红瓶</div>
+            <div class="product-price">¥1,480 <span class="product-original">¥1,880</span></div>
+            <div class="product-tags">
+                <span class="tag hot">靶向抗炎</span>
+                <span class="tag save">立省¥400</span>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>小红瓶——<span class="highlight">靶向抗炎、多维修复、高效去红</span>！</p>
+                <p>核心成分：PN + 裂褐菌素/PEG + 甘草酸 + 积雪草！</p>
+                <p>"三抗两修"方案——三重抗损修护 + 两重屏障重建！</p>
+                <p>敏感肌、换季泛红、屏障受损的姐妹，<span class="highlight">选小红瓶</span>！</p>
+                <p>日常1880，今天<span class="price-highlight">只要1480！</span></p>
+            </div>
+        </div>
+        <div class="countdown">🔥 5、4、3、2、1，上链接！</div>
+    </div>
+
+    <!-- 小绿瓶 -->
+    <div class="product-card" id="product-green">
+        <div class="product-header">
+            <div class="product-name">杜莎之谜 · 祛痘小绿瓶</div>
+            <div class="product-price">¥1,380 <span class="product-original">¥1,880</span></div>
+            <div class="product-tags">
+                <span class="tag hot">祛痘控油</span>
+                <span class="tag save">立省¥500</span>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="script-content">
+                <p><span class="host-tag host-yk">YK</span>油痘肌的姐妹看过来！小绿瓶——<span class="highlight">祛痘除痕、水油平衡、炎症拮抗、强韧屏障</span>！</p>
+                <p>核心成分：立体水杨酸、甘草酸二钾、皮傲宁、烟酰胺！</p>
+                <p>黑头粉刺、油脂性痤疮、红黑豆印——<span class="highlight">一瓶搞定</span>！</p>
+                <p>7ml大容量！日常1880，今天<span class="price-highlight">只要1380！省500！</span></p>
+            </div>
+        </div>
+        <div class="countdown">🔥 5、4、3、2、1，上链接！</div>
+    </div>
+
+    <!-- 黑金瓶 -->
+    <div class="product-card" id="product-ultra">
+        <div class="product-header" style="background: linear-gradient(135deg, #2d1810, #1a0a05);">
+            <div class="product-name" style="color: #ffd700;">杜莎之谜 · 抗炎美白Ultra黑金瓶 ⭐</div>
+            <div class="product-price">¥2,380 <span class="product-original">¥2,980</span></div>
+            <div class="product-tags">
+                <span class="tag hot">🔥 抗炎美白</span>
+                <span class="tag save">立省¥600</span>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>杜莎之谜的<span class="highlight-gold">旗舰款</span>——Ultra黑金瓶！</p>
+                <p>抗炎+美白双效合一！想要又白又稳的姐妹选这个！</p>
+                <p>单次2380，做3次疗程<span class="price-highlight">只要5980</span>！平均每次不到2000！</p>
+            </div>
+        </div>
+
+        <div class="benefit-reminder" style="margin: 12px 14px; background: linear-gradient(135deg, #8e44ad, #6c3483);">
+            <h3>💡 杜莎之谜怎么选？</h3>
+            <ul>
+                <li>斑/色沉/玫瑰痤疮 → <b>小黑瓶 ¥1,280</b></li>
+                <li>敏感/泛红/屏障受损 → <b>小红瓶 ¥1,480</b></li>
+                <li>油痘肌/黑头/痘印 → <b>小绿瓶 ¥1,380</b></li>
+                <li>抗炎+美白双效 → <b>黑金瓶 ¥2,380</b></li>
+            </ul>
+        </div>
+
+        <div class="countdown">🔥 5、4、3、2、1，上链接！</div>
+    </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ==================== 黄金微针系列 ==================== -->
+<section class="time-section" id="section-needle">
+    <div class="time-header" style="background: linear-gradient(135deg, #d4a017, #b8860b);">
+        <h2>
+            <span>⭐ 黄金微针系列</span>
+            <span class="time-tag">21:30-21:50</span>
+            <span class="goal-tag">冲GMV</span>
+        </h2>
+    </div>
+
+    <div class="product-card">
+        <div class="script-section">
+            <div class="section-title">系列引入</div>
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>水光讲完了！接下来——</p>
+                <p>如果你的问题不是表面的泛红、干燥，而是<span class="highlight">毛孔粗大、痘坑、顽固色斑、深层炎症</span>——</p>
+                <p>光靠水光不够！你需要<span class="highlight-gold">黄金微针</span>！</p>
+                <p><span class="host-tag host-yk">YK</span>黄金微针能把有效成分<span class="highlight">直接导入真皮层</span>，同时用射频能量刺激胶原再生！</p>
+                <p>今天我们准备了三个档位——入门级、进阶级、旗舰级，丰俭由人！</p>
+            </div>
+        </div>
+
+        <table class="info-table" style="margin: 0 14px 14px; width: calc(100% - 28px);">
+            <tr><th>档位</th><th>产品</th><th>直播价</th><th>定位</th></tr>
+            <tr>
+                <td>入门级</td>
+                <td>西弥斯OK18 无感模式</td>
+                <td style="color:#e74c3c; font-weight:bold;">¥1,580</td>
+                <td>怕疼首选，无痛体验</td>
+            </tr>
+            <tr>
+                <td>进阶级</td>
+                <td>帝医思5D INTRAcel</td>
+                <td style="color:#e74c3c; font-weight:bold;">¥1,980</td>
+                <td>韩国经典，5D全层覆盖</td>
+            </tr>
+            <tr>
+                <td>进阶+</td>
+                <td>西弥斯OK18 全模式</td>
+                <td style="color:#e74c3c; font-weight:bold;">¥2,380</td>
+                <td>全模式深度治疗</td>
+            </tr>
+            <tr style="background: rgba(255,215,0,0.1);">
+                <td style="color:#ffd700; font-weight:bold;">旗舰级 ⭐</td>
+                <td style="color:#ffd700; font-weight:bold;">SYLFIRM X 黑曜双波</td>
+                <td style="color:#e74c3c; font-weight:bold; font-size: 16px;">¥4,780</td>
+                <td style="color:#ffd700;">黄褐斑/玫瑰痤疮克星</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- 西弥斯入门 -->
+    <div class="product-card" id="product-ok18-1">
+        <div class="product-header">
+            <div class="product-name">西弥斯OK18黄金微针 · 无感模式</div>
+            <div class="product-price">¥1,580 <span class="product-original">¥1,980</span></div>
+            <div class="product-tags">
+                <span class="tag time">入门级</span>
+                <span class="tag save">立省¥400</span>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="script-content">
+                <p><span class="host-tag host-yk">YK</span>怕疼的姐妹！这个是<span class="highlight">无感模式</span>！</p>
+                <p>舒适度拉满，第一次做微针的姐妹首选！</p>
+                <p>日常1980，今天<span class="price-highlight">只要1580！</span></p>
+            </div>
+        </div>
+        <div class="countdown">🔥 5、4、3、2、1，上链接！</div>
+    </div>
+
+    <!-- 帝医思5D -->
+    <div class="product-card" id="product-jeisys">
+        <div class="product-header">
+            <div class="product-name">韩国帝医思 5D INTRAcel黄金微针</div>
+            <div class="product-price">¥1,980 <span class="product-original">¥2,680</span></div>
+            <div class="product-tags">
+                <span class="tag time">进阶级</span>
+                <span class="tag save">立省¥700</span>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>韩国老牌帝医思！5D覆盖从表皮到真皮全层！</p>
+                <p>毛孔粗大、痘坑、肤质粗糙的姐妹选这个！</p>
+                <p>单次1980，做3次疗程<span class="price-highlight">只要5680</span>！平均每次不到1900！</p>
+            </div>
+        </div>
+        <div class="countdown">🔥 5、4、3、2、1，上链接！</div>
+    </div>
+
+    <!-- 西弥斯全模式 -->
+    <div class="product-card" id="product-ok18-2">
+        <div class="product-header">
+            <div class="product-name">西弥斯OK18黄金微针 · 全模式</div>
+            <div class="product-price">¥2,380 <span class="product-original">¥2,980</span></div>
+            <div class="product-tags">
+                <span class="tag time">进阶+</span>
+                <span class="tag save">立省¥600</span>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="script-content">
+                <p><span class="host-tag host-yk">YK</span>OK18全模式！比无感模式更深度、更全面！</p>
+                <p>不怕疼、想要更好效果的姐妹升级这个！</p>
+                <p>日常2980，今天<span class="price-highlight">只要2380！</span></p>
+            </div>
+        </div>
+        <div class="countdown">🔥 5、4、3、2、1，上链接！</div>
+    </div>
+
+    <!-- SYLFIRM X 主推 -->
+    <div class="product-card" id="product-sylfirm" style="border: 2px solid #ffd700;">
+        <div class="product-header" style="background: linear-gradient(135deg, #2d1810, #1a0a05);">
+            <div class="product-name" style="color: #ffd700;">【主推】SYLFIRM X 黑曜双波黄金微针 ⭐⭐</div>
+            <div class="product-price" style="font-size: 32px;">¥4,780 <span class="product-original">¥5,980</span></div>
+            <div class="product-tags">
+                <span class="tag hot">🔥 旗舰主推</span>
+                <span class="tag save">立省¥1,200</span>
+                <span class="tag new">黄褐斑克星</span>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="section-title">重磅介绍 🔥</div>
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>黄金微针的<span class="highlight-gold">天花板</span>来了！</p>
+                <p>韩国SYLFIRM X——<span class="highlight-gold">黑曜双波黄金微针</span>！</p>
+                <p>它和普通微针最大的区别？<span class="highlight">双波技术</span>！</p>
+                <p>连续波 + 脉冲波，两种模式精准切换！</p>
+                <p><span class="host-tag host-yk">YK</span>连续波模式——紧致提升、刺激胶原再生！</p>
+                <p>脉冲波模式——精准针对<span class="highlight">黄褐斑、玫瑰痤疮、血管性问题</span>！</p>
+                <p>这是目前唯一一款能同时搞定<span class="highlight">色斑+红血丝+毛孔+痘坑</span>的黄金微针！</p>
+                <p><span class="host-tag host-xx">萱萱</span>特别适合这几类姐妹：</p>
+                <p>🎯 顽固性黄褐斑——别的项目不敢做，SYLFIRM X可以！</p>
+                <p>🎯 玫瑰痤疮/红血丝——脉冲波精准控红！</p>
+                <p>🎯 毛孔+痘坑+肤质差——一台设备全解决！</p>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="section-title">价格揭晓 🔥</div>
+            <div class="script-content">
+                <p>这个设备单次外面做6000-8000起！我们日常5980！</p>
+                <p>今天<span class="slow">放慢</span>——<span class="price-highlight">只要4780！省1200！</span></p>
+                <p>做3次疗程<span class="price-highlight">只要12800！</span>立省<span class="highlight">5140</span>！平均每次不到4300！</p>
+                <p>3次做下来，黄褐斑淡了、红血丝退了、毛孔细了、皮肤紧了——<span class="highlight">相当于做了4个项目的效果</span>！</p>
+            </div>
+        </div>
+        <div class="countdown" style="font-size: 24px;">
+            🔥 黄金微针天花板！4780！<br>5——4——3——2——1——上链接！！！
+        </div>
+    </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ==================== 其他产品 + 水光卡 ==================== -->
+<section class="time-section" id="section-others">
+    <div class="time-header">
+        <h2>
+            <span>📦 氐瑞三联蛋白 + 春季水光卡</span>
+            <span class="time-tag">21:50-21:55</span>
+        </h2>
+    </div>
+
+    <!-- 氐瑞三联蛋白 -->
+    <div class="product-card" id="product-dirui">
+        <div class="product-header">
+            <div class="product-name">氐瑞三联蛋白 · 全愈瓶</div>
+            <div class="product-price">¥1,480 <span class="product-original">¥1,980</span></div>
+            <div class="product-tags">
+                <span class="tag hot">三重蛋白</span>
+                <span class="tag save">立省¥500</span>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>氐瑞三联蛋白！<span class="highlight">胶原蛋白+贻贝粘蛋白+丝素蛋白</span>，三重蛋白合一！</p>
+                <p>修复力拉满！做完光电项目或者微针后的修复搭档！</p>
+                <p>日常1980，今天<span class="price-highlight">只要1480！</span></p>
+            </div>
+        </div>
+        <div class="countdown">🔥 5、4、3、2、1，上链接！</div>
+    </div>
+
+    <!-- 春季水光卡 -->
+    <div class="product-card" id="product-watercard" style="border: 2px solid #27ae60;">
+        <div class="product-header" style="background: linear-gradient(135deg, #0d6b3d, #27ae60);">
+            <div class="product-name" style="color: #fff;">春季·水光卡 ⭐ 囤货首选</div>
+            <div class="product-price">¥2,999 <span class="product-original">¥4,128</span></div>
+            <div class="product-tags">
+                <span class="tag save">立省¥1,129</span>
+                <span class="tag gift">超值囤货</span>
+            </div>
+        </div>
+        <div class="script-section">
+            <div class="script-content">
+                <p><span class="host-tag host-yk">YK</span>想囤水光的姐妹！这张卡<span class="highlight">性价比超高</span>！</p>
+                <p>今天讲的杜莎之谜系列、氐瑞三联蛋白，很多都可以用这张卡！</p>
+                <p>日常4128，今天——<span class="price-highlight">只要2999！省1129！</span></p>
+                <p>有计划做多次水光的姐妹，买卡比单次划算太多了！</p>
+            </div>
+        </div>
+        <div class="countdown">🔥 5、4、3、2、1，上链接！</div>
+    </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ==================== 返场 + 收尾 ==================== -->
+<section class="time-section" id="section-final">
+    <div class="time-header" style="background: linear-gradient(135deg, #e74c3c, #c0392b);">
+        <h2>
+            <span>🔥 返场 + 收尾</span>
+            <span class="time-tag">21:55-22:00</span>
+            <span class="goal-tag">最后冲刺</span>
+        </h2>
+    </div>
+
+    <div class="product-card">
+        <div class="script-section">
+            <div class="section-title">返场预告</div>
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>姐妹们！直播马上要结束了！</p>
+                <p>还没下单的姐妹<span class="highlight">抓紧最后几分钟</span>！今天的价格过了就没了！</p>
+                <p>接下来把今晚最火的几个品快速返场！</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="must-remember" style="background: linear-gradient(135deg, #c0392b, #e74c3c);">
+        <h3>🔥 爆品返场</h3>
+        <div class="must-remember-item">
+            <div class="product">春日抗炎修复卡 ¥499</div>
+            <div class="script">换季救命卡！499当1180花！最后XX张！</div>
+        </div>
+        <div class="must-remember-item">
+            <div class="product">德菲林鱼子套组 ¥1,980起</div>
+            <div class="script">首发限时！买6送3最划算！过了今天恢复原价！</div>
+        </div>
+        <div class="must-remember-item">
+            <div class="product">SYLFIRM X黑曜双波 ¥4,780</div>
+            <div class="script">黄金微针天花板！黄褐斑、红血丝、毛孔一站式搞定！</div>
+        </div>
+        <div class="must-remember-item">
+            <div class="product">春季水光卡 ¥2,999</div>
+            <div class="script">囤水光首选！</div>
+        </div>
+    </div>
+
+    <div class="product-card">
+        <div class="script-section">
+            <div class="section-title">收尾话术</div>
+            <div class="script-content">
+                <p><span class="host-tag host-xx">萱萱</span>姐妹们！今晚的抗炎季专场到这里就结束了！</p>
+                <p><span class="host-tag host-yk">YK</span>感谢所有姐妹的陪伴！从头看到尾的铁粉们辛苦了！❤️</p>
+                <p><span class="host-tag host-xx">萱萱</span><span class="highlight">下单的姐妹记得：</span></p>
+                <p>1. 看弹窗加客服微信</p>
+                <p>2. 客服会帮你预约到店时间</p>
+                <p>3. 有效期很长，不着急，什么时候方便什么时候来！</p>
+                <p><span class="host-tag host-yk">YK</span>有任何问题随时私信我们，我们下次直播再见！</p>
+                <p><span class="host-tag host-xx">萱萱</span>比心！拜拜！❤️</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ==================== 主播必背清单 ==================== -->
+<section class="time-section" id="section-mustknow">
+    <div class="time-header" style="background: linear-gradient(135deg, #c0392b, #e74c3c);">
+        <h2><span>⭐ 主播必背清单</span></h2>
+    </div>
+
+    <div class="must-remember">
+        <h3>🔥 最重要的话（贴在面前！）</h3>
+        <div class="must-remember-item">
+            <div class="product">春日抗炎修复卡 ¥499</div>
+            <div class="script">"日常1378，今天499！权益二可以当1180抵扣德菲林！等于倒赚681！"</div>
+        </div>
+        <div class="must-remember-item">
+            <div class="product">德菲林鱼子套组（首发）</div>
+            <div class="script">"2%高浓度、99%高纯度、3G大剂量！安卡十字修护体系！3分钟速修褪红、15天愈炎新生！买6送3最划算！"</div>
+        </div>
+        <div class="must-remember-item">
+            <div class="product">SYLFIRM X 黑曜双波 ¥4,780</div>
+            <div class="script">"黄金微针天花板！双波技术！唯一能同时搞定黄褐斑+红血丝+毛孔+痘坑的微针！3次12800！"</div>
+        </div>
+        <div class="must-remember-item">
+            <div class="product">杜莎之谜选购指南</div>
+            <div class="script">"斑/色沉选小黑瓶，敏感/泛红选小红瓶，油痘肌选小绿瓶，要美白选黑金瓶！"</div>
+        </div>
+    </div>
+
+    <div class="product-card">
+        <div class="script-section">
+            <div class="section-title">消除顾虑万能话术</div>
+            <div class="script-content">
+                <p>💬 <span class="highlight">怕不适合</span>：先拍锁价！到店免费皮肤检测+面诊！不合适全退！</p>
+                <p>💬 <span class="highlight">不知道选哪个</span>：到店咨询师会根据你的皮肤状况一对一推荐！</p>
+                <p>💬 <span class="highlight">怕被推销</span>：到店就做直播间拍的项目！我们不推销别的！</p>
+                <p>💬 <span class="highlight">德菲林没听过</span>：欧洲进口，美国FDA+法国ANSM双重GMP认证，品质经得起验证！</p>
+            </div>
+        </div>
+
+        <div class="script-section">
+            <div class="section-title">抗炎季核心金句（随时穿插）</div>
+            <div class="script-content">
+                <p>🌿 "换季不抗炎，烂脸一整年！"</p>
+                <p>🌿 "抗衰先抗炎，抗炎是基础，修复是尽头！"</p>
+                <p>🌿 "别让换季毁了你一冬天攒下的好皮肤！"</p>
+                <p>🌿 "3分钟速修褪红，15天愈炎新生！"</p>
+                <p>🌿 "499换季急救卡，一顿火锅钱救你的脸！"</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+</div>
+
+<!-- 底部快速导航 -->
+<div class="quick-nav">
+    <button class="nav-btn" onclick="scrollTo('section-opening')">📢开场</button>
+    <button class="nav-btn highlight" onclick="scrollTo('section-card499')">🔥499卡</button>
+    <button class="nav-btn green-highlight" onclick="scrollTo('section-dfl')">⭐德菲林</button>
+    <button class="nav-btn" onclick="scrollTo('section-dusza')">💧杜莎</button>
+    <button class="nav-btn" onclick="scrollTo('section-needle')">⭐微针</button>
+    <button class="nav-btn" onclick="scrollTo('section-others')">📦水光卡</button>
+    <button class="nav-btn" onclick="scrollTo('section-final')">🔥返场</button>
+    <button class="nav-btn" onclick="scrollTo('section-mustknow')">⭐必背</button>
+</div>
+
+<div class="back-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">⬆️</div>
+
+<script>
+function scrollTo(id) {
+    document.getElementById(id).scrollIntoView({ behavior: 'smooth' });
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    if (event && event.target) event.target.classList.add('active');
+}
+
+function updateTime() {
+    const now = new Date();
+    document.getElementById('timeDisplay').textContent =
+        String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+}
+setInterval(updateTime, 1000);
+updateTime();
+
+const sections = document.querySelectorAll('.time-section');
+const navBtns = document.querySelectorAll('.nav-btn');
+window.addEventListener('scroll', () => {
+    let currentId = '';
+    sections.forEach(s => {
+        if (scrollY >= s.offsetTop - 160) currentId = s.id;
+    });
+    navBtns.forEach(b => {
+        const onclick = b.getAttribute('onclick') || '';
+        if (onclick.includes(currentId)) {
+            b.style.opacity = '1';
+        }
+    });
+});
+</script>
+
+</body>
+</html>

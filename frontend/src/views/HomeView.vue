@@ -1,31 +1,37 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import HomeToolCards, { type ToolKey } from '../components/HomeToolCards.vue'
-import AppLayout from '../layouts/AppLayout.vue'
-import { modePathMap } from '../stores/workspace'
+import HomeDashboard from '../components/HomeDashboard.vue'
+import WorkspaceLayout from '../layouts/WorkspaceLayout.vue'
+import { isGuestAllowedPath, useGuestAccess } from '../composables/useGuestAccess'
 import type { ActiveUser } from '../stores/auth'
 
-defineProps<{
+const props = defineProps<{
   currentUser?: ActiveUser
 }>()
 
 const emit = defineEmits<{
   logout: []
+  requestLogin: [path?: string | null]
 }>()
 
 const router = useRouter()
+const { promptLogin } = useGuestAccess()
 
-function selectWorkspaceMode(mode: ToolKey) {
-  router.push(modePathMap[mode])
+const isGuestUser = computed(() => !props.currentUser?.token)
+
+function navigate(path: string) {
+  if (isGuestUser.value && !isGuestAllowedPath(path)) {
+    promptLogin(path)
+    emit('requestLogin', path)
+    return
+  }
+  router.push(path)
 }
 </script>
 
 <template>
-  <AppLayout :current-user="currentUser" @logout="emit('logout')">
-    <template #default>
-      <HomeToolCards
-        @select="selectWorkspaceMode"
-      />
-    </template>
-  </AppLayout>
+  <WorkspaceLayout :current-user="currentUser" @logout="emit('logout')" @request-login="emit('requestLogin', $event)">
+    <HomeDashboard :is-guest-user="isGuestUser" @navigate="navigate" @request-login="emit('requestLogin', $event)" />
+  </WorkspaceLayout>
 </template>

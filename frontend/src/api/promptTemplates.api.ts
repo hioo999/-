@@ -52,6 +52,19 @@ export interface PromptTemplateVersionData {
   promptBody?: string
 }
 
+export interface PromptTemplateMetricData {
+  templateId: number
+  templateType: string
+  generationCount: number
+  editedCount: number
+  savedCount: number
+  teleprompterOpenedCount: number
+  editRate: number
+  saveRate: number
+  teleprompterRate: number
+  lastGeneratedAt: string | null
+}
+
 export async function listPromptTemplateCategories(templateType = '') {
   const res = await api.get('/api/copilot/prompt-template-categories', templateType ? { params: { template_type: templateType } } : undefined)
   return res.data
@@ -74,6 +87,11 @@ export async function deletePromptTemplateCategory(categoryKey: string) {
 
 export async function listPromptTemplates(categoryKey = '', templateType = '') {
   const res = await api.get('/api/copilot/prompt-templates', { params: { category_key: categoryKey, template_type: templateType } })
+  return res.data
+}
+
+export async function listPromptTemplateMetrics(templateType = ''): Promise<{ code: number; data: PromptTemplateMetricData[] }> {
+  const res = await api.get('/api/copilot/prompt-templates/metrics', templateType ? { params: { template_type: templateType } } : undefined)
   return res.data
 }
 

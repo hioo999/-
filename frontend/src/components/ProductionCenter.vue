@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import PlatformContentStudio from './PlatformContentStudio.vue'
+import ShortVideoProductionPanel from './ShortVideoProductionPanel.vue'
 import TeleprompterPanel from './TeleprompterPanel.vue'
 import WechatArticlePublisher from './WechatArticlePublisher.vue'
 import {
@@ -62,11 +63,13 @@ interface ActiveUser {
 const props = defineProps<{
   initialTitle?: string
   initialContent?: string
+  initialTab?: ProductionTab
   currentUser?: ActiveUser
 }>()
 
 const router = useRouter()
-const activeTab = ref<ProductionTab>('overview')
+const activeTab = ref<ProductionTab>(props.initialTab || 'overview')
+const setupExpanded = ref(true)
 const activeTaskKey = ref<ProductionTaskKey>('talkingVideo')
 const assetFilter = ref<'all' | 'prompt'>('all')
 const previewAssetId = ref(0)
@@ -149,7 +152,7 @@ const productionTasks: ProductionTaskOption[] = [
     label: '生成一条口播视频',
     badge: '口播',
     summary: '从主题或素材生成可录制口播稿，再进入提词器或出片。',
-    path: '主题/素材 - 口播文案 - 提词器/出片',
+    path: '主题/素材 -> 口播文案 -> 提词器/出片',
     defaultTopic: '生成一条适合短视频平台的口播内容',
     exampleTitle: '如何用 AI 提升个人 IP 内容生产效率',
     exampleMaterial: '我是一名个人 IP 内容创作者，希望把日常经验快速整理成短视频口播稿，核心观点是 AI 可以帮我减少选题、写稿和改稿时间，但最终表达仍要保留个人风格。',
@@ -163,21 +166,21 @@ const productionTasks: ProductionTaskOption[] = [
     label: '做一篇公众号文章',
     badge: '公众号',
     summary: '把素材二创成长文，完成排版预览并发送公众号草稿箱。',
-    path: '素材 - 二创长文 - 公众号排版 - 草稿箱',
+    path: '素材 -> 二创长文 -> 公众号排版 -> 草稿箱',
     defaultTopic: '把素材整理成一篇公众号图文',
     exampleTitle: '从一篇资料整理成企业 IP 长文',
     exampleMaterial: '企业想通过公众号建立专业信任，但团队资料分散在销售话术、案例复盘和产品介绍里。请整理成一篇适合公众号发布的文章，结构要有痛点、方法、案例和行动建议。',
     defaultInputMode: 'text',
     targetTab: 'wechat',
     targetPlatforms: ['wechat'],
-    ctaLabel: '进入公众号闭环',
+    ctaLabel: '写公众号文章',
   },
   {
     key: 'liveScript',
     label: '准备一场直播话术',
     badge: '直播',
     summary: '围绕产品、活动或观点生成直播开场、促单和互动话术。',
-    path: '产品/活动 - 直播脚本 - 在线提词器',
+    path: '产品/活动 -> 直播脚本 -> 在线提词器',
     defaultTopic: '准备一场直播间可直接使用的话术',
     exampleTitle: '618 活动直播开场和促单话术',
     exampleMaterial: '直播主题是 618 限时活动，产品是一套 AI 内容生产工具。需要开场留人、福利说明、核心卖点、互动提问和促单话术，语气要专业但有紧迫感。',
@@ -191,7 +194,7 @@ const productionTasks: ProductionTaskOption[] = [
     label: '生成一条反转短剧',
     badge: '短剧',
     summary: '从产品、痛点和角色出发，生成剧情脚本、分镜和高级视频生产方案。',
-    path: '产品/痛点 - 剧情脚本 - 分镜 - 高级视频',
+    path: '产品/痛点 -> 剧情脚本 -> 分镜 -> 高级视频',
     defaultTopic: '设计一条带反转钩子的剧情短片',
     exampleTitle: '客户不信任 AI 工具，最后被效率反转',
     exampleMaterial: '角色 A 是传统内容团队负责人，认为 AI 写出来的内容没灵魂；角色 B 用 AI 内容中心把素材、脚本、提词和发布串成闭环，最后用同样素材半小时完成一条可发布内容。',
@@ -262,11 +265,6 @@ const nextWorkflowAction = computed<WorkflowAction>(() => {
     label: '查看交付记录',
   }
 })
-const quickStartSteps = computed(() => [
-  { label: '第 1 步', title: '选任务', desc: selectedProductionTask.value.label },
-  { label: '第 2 步', title: '用示例填素材', desc: selectedProductionTask.value.exampleTitle },
-  { label: '第 3 步', title: '点下一步', desc: nextWorkflowAction.value.label },
-])
 const currentWorkflowStepLabel = computed(() => {
   const current = workflowSteps.value.find((step) => step.current)
   if (current) return current.label
@@ -325,17 +323,23 @@ function trackDeliveryRecords() {
 
 const tabItems: Array<{ key: ProductionTab; label: string; desc: string }> = [
   { key: 'overview', label: '选题总览', desc: '项目、选题、素材和内容统一看板' },
-  { key: 'wechat', label: '公众号闭环', desc: '文章生成、排版、封面、草稿箱' },
+  { key: 'wechat', label: '写公众号文章', desc: '文章生成、排版、封面、草稿箱' },
   { key: 'platform', label: '小红书/口播', desc: '小红书图文、抖音/视频号口播' },
   { key: 'teleprompter', label: '提词器', desc: '把口播稿带入录制或直播' },
-  { key: 'advanced', label: '高级视频', desc: '短大片和剧本短视频' },
+  { key: 'advanced', label: '短视频出片', desc: '短大片和剧本短视频' },
 ]
 
+const showWorkArea = computed(() => hasSavedMaterial.value || Boolean(props.initialTab && props.initialTab !== 'overview'))
+const isFocusWorkbench = computed(() => showWorkArea.value && !setupExpanded.value)
+const showGuidePanel = computed(() => !isFocusWorkbench.value)
+const showStatusGrid = computed(() => hasActiveWork.value && showGuidePanel.value)
+const showContextSidebar = computed(() => showWorkArea.value)
+
 const statusCards = computed(() => [
-  { label: '当前项目', value: selectedProject.value?.name || '未选择', hint: selectedProject.value?.ipType || '先选择或创建 IP 项目' },
-  { label: '当前选题', value: selectedTopic.value?.title || '未选择', hint: selectedTopic.value?.status || '选题承载跨平台内容' },
+  { label: '当前项目', value: selectedProject.value?.name || '暂未选择', hint: selectedProject.value?.ipType || '先选择或创建 IP 项目' },
+  { label: '当前选题', value: selectedTopic.value?.title || '暂未选择', hint: selectedTopic.value?.status || '选题承载跨平台内容' },
   { label: '平台内容', value: String(platformContents.value.length), hint: '公众号、小红书、口播等内容' },
-  { label: '生成进度', value: `${runningTasks.value.length} 进行中 / ${failedTasks.value.length} 待处理`, hint: '内容与图片生成状态' },
+  { label: '生成进度', value: `${runningTasks.value.length} 进行中 / ${failedTasks.value.length} 需关注`, hint: '内容与图片生成状态' },
   { label: '素材资产', value: String(assets.value.length), hint: '素材、文案、图片和视频' },
 ])
 
@@ -360,7 +364,7 @@ const statusLabelMap: Record<string, string> = {
   retrying: '重试中',
   completed: '已完成',
   success: '已完成',
-  failed: '待处理',
+  failed: '需重试',
   cancelled: '已取消',
   draft: '草稿',
   editing: '编辑中',
@@ -396,6 +400,17 @@ watch(selectedProjectId, async () => {
 watch(selectedTopicId, async () => {
   await refreshContextData()
 })
+
+watch(hasSavedMaterial, (saved) => {
+  if (saved) setupExpanded.value = false
+})
+
+watch(
+  () => props.initialTab,
+  (tab) => {
+    if (tab) activeTab.value = tab
+  },
+)
 
 watch(currentWorkflowStepLabel, (step) => {
   if (!step || step === lastReportedWorkflowStep.value) return
@@ -479,8 +494,12 @@ async function refreshContextData() {
     generationRecords.value = recordRes.data.items || []
     drafts.value = draftRes.data.items || []
     trackDeliveryRecords()
-  } catch (err: any) {
-    setFeedback('error', '内容刷新失败，请稍后重试。')
+  } catch {
+    platformContents.value = []
+    tasks.value = []
+    assets.value = []
+    generationRecords.value = []
+    drafts.value = []
   }
 }
 
@@ -762,23 +781,38 @@ function openPromptTool() {
 </script>
 
 <template>
-  <div class="production-center-shell">
-    <header class="production-hero">
+  <div class="production-center-shell" :class="{ 'production-center-focus': isFocusWorkbench }">
+    <header v-if="showGuidePanel" class="production-hero">
       <div class="hero-copy">
-        <span class="section-eyebrow">生产工作台</span>
+        <span class="section-eyebrow">生产模块</span>
         <h1>生产中心</h1>
-        <p>围绕一个 IP 项目和一个内容选题，统一组织素材、平台内容和交付资产。</p>
+        <p>先选今天要交付的内容，系统会告诉你下一步该做什么。</p>
       </div>
       <div class="hero-actions">
         <span v-if="runningTasks.length" class="production-chip active">{{ runningTasks.length }} 项生成中</span>
-        <span v-if="failedTasks.length" class="production-chip danger">{{ failedTasks.length }} 项待处理</span>
+        <span v-if="failedTasks.length" class="production-chip warning">{{ failedTasks.length }} 项需关注</span>
         <button class="btn btn-ghost" :disabled="isLoading" @click="loadInitialData">{{ isLoading ? '刷新中...' : '刷新内容' }}</button>
       </div>
     </header>
 
+    <section v-else class="workbench-focus-bar production-card" aria-label="当前生产上下文">
+      <div class="focus-context">
+        <span class="panel-kicker">{{ currentWorkflowStepLabel }}</span>
+        <strong>{{ selectedTopic?.title || selectedProductionTask.label }}</strong>
+        <p>{{ selectedProject?.name || '暂未选择项目' }} · {{ selectedProductionTask.badge }} · {{ assets.length }} 项资产</p>
+      </div>
+      <div class="focus-actions">
+        <button class="btn btn-primary btn-sm" :disabled="isRunningGuideAction" @click="runNextWorkflowAction">
+          {{ isRunningGuideAction ? '处理中...' : nextWorkflowAction.label }}
+        </button>
+        <button class="btn btn-ghost btn-sm" @click="setupExpanded = true">调整项目 / 选题 / 素材</button>
+        <button class="btn btn-ghost btn-sm" :disabled="isLoading" @click="loadInitialData">{{ isLoading ? '刷新' : '刷新内容' }}</button>
+      </div>
+    </section>
+
     <div v-if="feedback" class="production-feedback" :class="feedback.type">{{ feedback.message }}</div>
 
-    <section class="production-status-grid" aria-label="内容概览">
+    <section v-if="showStatusGrid" class="production-status-grid" aria-label="内容概览">
       <article v-for="card in statusCards" :key="card.label" class="production-status-card">
         <span>{{ card.label }}</span>
         <strong>{{ card.value }}</strong>
@@ -786,13 +820,39 @@ function openPromptTool() {
       </article>
     </section>
 
-    <section class="production-guide production-card" aria-label="生产任务引导">
+    <section v-if="showGuidePanel" class="production-guide production-card" aria-label="生产任务引导">
       <div class="card-head guide-head">
         <div>
           <h2>先选一个生产目标</h2>
-          <p>按顺序完成项目、选题、素材和生成步骤。</p>
+          <p>先确定这次要交付什么，再按当前步骤补齐项目、选题和素材。</p>
         </div>
-        <button class="btn btn-primary" :disabled="isRunningGuideAction" @click="runNextWorkflowAction">{{ isRunningGuideAction ? '处理中...' : nextWorkflowAction.label }}</button>
+        <span class="current-step-pill">{{ currentWorkflowStepLabel }}</span>
+      </div>
+
+      <div class="guide-focus-grid">
+        <div class="next-action-panel">
+          <div>
+            <span class="panel-kicker">下一步</span>
+            <strong>{{ nextWorkflowAction.title }}</strong>
+            <p>{{ nextWorkflowAction.desc }}</p>
+            <div class="workflow-progress" aria-label="生产进度">
+              <span
+                v-for="(step, index) in workflowSteps"
+                :key="step.label"
+                class="workflow-dot"
+                :class="{ done: step.done, current: step.current }"
+                :title="`${index + 1}. ${step.label}`"
+              />
+            </div>
+            <div class="target-platforms" aria-label="当前任务目标平台">
+              <span v-for="platform in selectedProductionTask.targetPlatforms" :key="platform">{{ formatPlatformLabel(platform) }}</span>
+            </div>
+          </div>
+          <div class="next-action-buttons">
+            <button class="btn btn-primary" :disabled="isRunningGuideAction" @click="runNextWorkflowAction">{{ isRunningGuideAction ? '处理中...' : nextWorkflowAction.label }}</button>
+            <button class="btn btn-ghost" @click="useSelectedTaskExample">用示例开始</button>
+          </div>
+        </div>
       </div>
 
       <div class="task-entry-grid">
@@ -806,50 +866,7 @@ function openPromptTool() {
           <span>{{ task.badge }}</span>
           <strong>{{ task.label }}</strong>
           <small>{{ task.summary }}</small>
-          <small class="task-example">示例：{{ task.exampleTitle }}</small>
-          <em>{{ task.path }}</em>
         </button>
-      </div>
-
-      <div class="quick-start-panel" role="region" aria-label="首单生产向导">
-        <div class="quick-start-copy">
-          <strong>首单生产向导</strong>
-          <p>不理解项目、选题也可以先跑一遍：选任务、用示例填素材、再点下一步。</p>
-        </div>
-        <div class="quick-start-steps">
-          <article v-for="step in quickStartSteps" :key="step.label">
-            <span>{{ step.label }}</span>
-            <strong>{{ step.title }}</strong>
-            <small>{{ step.desc }}</small>
-          </article>
-        </div>
-        <button class="btn btn-ghost" @click="useSelectedTaskExample">用示例开始</button>
-      </div>
-
-      <div class="workflow-rail" aria-label="推荐生产顺序">
-        <article
-          v-for="(step, index) in workflowSteps"
-          :key="step.label"
-          class="workflow-step"
-          :class="{ done: step.done, current: step.current }"
-        >
-          <i>{{ index + 1 }}</i>
-          <div>
-            <strong>{{ step.label }}</strong>
-            <span>{{ step.desc }}</span>
-          </div>
-        </article>
-      </div>
-
-      <div class="next-action-panel">
-        <div>
-          <strong>{{ nextWorkflowAction.title }}</strong>
-          <p>{{ nextWorkflowAction.desc }}</p>
-          <div class="target-platforms" aria-label="当前任务目标平台">
-            <span v-for="platform in selectedProductionTask.targetPlatforms" :key="platform">{{ formatPlatformLabel(platform) }}</span>
-          </div>
-        </div>
-        <button class="btn btn-primary" :disabled="isRunningGuideAction" @click="runNextWorkflowAction">{{ isRunningGuideAction ? '处理中...' : nextWorkflowAction.label }}</button>
       </div>
 
       <div v-if="canOpenPromptTool" class="standalone-tool-row" aria-label="独立工具入口">
@@ -866,7 +883,12 @@ function openPromptTool() {
       </div>
     </section>
 
-    <section class="production-context-grid">
+    <section v-if="!showWorkArea || setupExpanded" class="production-context-grid">
+      <div v-if="showWorkArea" class="context-toggle-row">
+        <button class="btn btn-ghost btn-sm" @click="setupExpanded = !setupExpanded">
+          {{ setupExpanded ? '收起项目配置' : '展开项目配置' }}
+        </button>
+      </div>
       <article class="production-card context-card">
         <div class="card-head compact">
           <div>
@@ -935,7 +957,7 @@ function openPromptTool() {
             <h3>素材输入</h3>
             <p>主题、链接和原文会整理为当前选题素材，便于生成公众号、小红书和口播内容。</p>
           </div>
-          <button class="btn btn-primary btn-sm" :disabled="isSavingMaterial" @click="handleSaveMaterial">{{ isSavingMaterial ? '保存中...' : '保存素材' }}</button>
+          <button class="btn btn-primary btn-sm" data-testid="production-save-material" :disabled="isSavingMaterial" @click="handleSaveMaterial">{{ isSavingMaterial ? '保存中...' : '保存素材' }}</button>
         </div>
         <label>素材标题<input v-model="materialForm.title" class="input" placeholder="可选，用于资产库展示" /></label>
         <label v-if="materialForm.inputMode === 'topic'">主题<input v-model="materialForm.topic" class="input" placeholder="一句话说明内容方向" /></label>
@@ -945,7 +967,7 @@ function openPromptTool() {
       </article>
     </section>
 
-    <nav class="production-tabs" aria-label="生产中心模块">
+    <nav v-if="showWorkArea" class="production-tabs" aria-label="生产中心模块">
       <button
         v-for="tab in tabItems"
         :key="tab.key"
@@ -957,7 +979,7 @@ function openPromptTool() {
       </button>
     </nav>
 
-    <section class="production-layout">
+    <section v-if="showWorkArea" class="production-layout">
       <main class="production-main-panel">
         <section v-if="activeTab === 'overview'" class="production-card overview-panel">
           <div class="card-head">
@@ -967,7 +989,7 @@ function openPromptTool() {
               <p>{{ hasActiveWork ? '当前选题下的平台内容和素材资产会在这里汇总。' : '先选择或创建 IP 项目与内容选题，再开始生产。' }}</p>
             </div>
             <div class="card-actions">
-              <button class="btn btn-primary" :disabled="!hasActiveWork" @click="activate('wechat')">进入公众号闭环</button>
+              <button class="btn btn-primary" :disabled="!hasActiveWork" @click="activate('wechat')">写公众号文章</button>
               <button class="btn btn-ghost" :disabled="!hasActiveWork" @click="activate('platform')">生成小红书/口播</button>
             </div>
           </div>
@@ -1002,6 +1024,8 @@ function openPromptTool() {
           :key="`wechat-${selectedProjectId}-${selectedTopicId}`"
           :initial-title="contentInitialTitle"
           :initial-content="contentInitialContent"
+          :initial-input-mode="materialForm.inputMode"
+          :initial-source-url="materialForm.sourceUrl"
           :initial-project-id="selectedProjectId"
           :initial-topic-id="selectedTopicId"
           source-type="production-center"
@@ -1014,6 +1038,8 @@ function openPromptTool() {
           :key="`platform-${selectedProjectId}-${selectedTopicId}`"
           :initial-title="contentInitialTitle"
           :initial-content="contentInitialContent"
+          :initial-input-mode="materialForm.inputMode"
+          :initial-source-url="materialForm.sourceUrl"
           :initial-project-id="selectedProjectId"
           :initial-topic-id="selectedTopicId"
           :current-user="currentUser"
@@ -1025,24 +1051,14 @@ function openPromptTool() {
           :current-user="teleprompterUser"
         />
 
-        <section v-else class="production-card advanced-panel">
-          <span class="section-eyebrow">Advanced Video</span>
-          <h2>高级视频生产入口</h2>
-          <p>短大片和剧本短视频后续会沿用当前项目和选题，形成完整视频资产。</p>
-          <div class="advanced-grid">
-            <article>
-              <strong>短大片工厂</strong>
-              <span>产品图、人物图或宠物图进入主体清理、多视图、九宫格、分镜和视频任务。</span>
-            </article>
-            <article>
-              <strong>剧本短视频</strong>
-              <span>角色库、多集剧本、分镜表、分镜图和视频生成统一归档到当前选题。</span>
-            </article>
-          </div>
-        </section>
+        <ShortVideoProductionPanel
+          v-else
+          :initial-project-id="selectedProjectId"
+          :initial-topic-id="selectedTopicId"
+        />
       </main>
 
-      <aside class="production-side-panel">
+      <aside v-if="showContextSidebar" class="production-side-panel" aria-label="生产侧栏">
         <section class="production-card side-card">
           <div class="side-head"><strong>生成进度</strong><button class="mini-link" @click="refreshContextData">刷新</button></div>
           <p v-if="!tasks.length">暂无生成进度。</p>
@@ -1156,6 +1172,11 @@ function openPromptTool() {
   font-weight: 800;
 }
 
+.production-chip.warning {
+  background: rgba(217, 119, 6, 0.08);
+  color: #b45309;
+}
+
 .production-chip.danger {
   background: rgba(220, 38, 38, 0.08);
   color: #b91c1c;
@@ -1217,6 +1238,7 @@ function openPromptTool() {
 }
 
 .guide-head {
+  align-items: center;
   margin-bottom: 0;
 }
 
@@ -1225,6 +1247,63 @@ function openPromptTool() {
   color: var(--color-text-primary);
   font-size: 24px;
   letter-spacing: -0.8px;
+}
+
+.current-step-pill,
+.panel-kicker,
+.selected-route-card span {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.guide-focus-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.workflow-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.workflow-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #dbe3f3;
+}
+
+.workflow-dot.done {
+  background: #22c55e;
+}
+
+.workflow-dot.current {
+  background: #2457ff;
+  box-shadow: 0 0 0 4px rgba(36, 87, 255, 0.16);
+}
+
+.next-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.context-toggle-row,
+.setup-reopen {
+  align-self: flex-start;
 }
 
 .task-entry-grid {
@@ -1238,8 +1317,8 @@ function openPromptTool() {
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
-  min-height: 190px;
-  padding: 16px;
+  min-height: 132px;
+  padding: 14px;
   border: 1px solid rgba(29, 29, 31, 0.08);
   border-radius: 20px;
   background: #fff;
@@ -1278,7 +1357,7 @@ function openPromptTool() {
 }
 
 .task-entry-card strong {
-  font-size: 17px;
+  font-size: 16px;
   letter-spacing: -0.35px;
 }
 
@@ -1288,24 +1367,10 @@ function openPromptTool() {
   line-height: 1.55;
 }
 
-.task-entry-card .task-example {
-  color: #475569;
-  font-weight: 800;
-}
-
-.task-entry-card em {
-  margin-top: auto;
-  color: #1d4ed8;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 800;
-  line-height: 1.45;
-}
-
 .quick-start-panel {
   display: grid;
-  grid-template-columns: minmax(180px, 0.8fr) minmax(0, 1.8fr) auto;
-  align-items: center;
+  grid-template-columns: 1fr;
+  align-items: stretch;
   gap: 14px;
   padding: 16px;
   border: 1px solid rgba(29, 29, 31, 0.08);
@@ -1328,14 +1393,16 @@ function openPromptTool() {
 
 .quick-start-steps {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
 .quick-start-steps article {
   display: grid;
-  gap: 4px;
-  min-height: 94px;
+  grid-template-columns: 64px minmax(0, 0.6fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
   padding: 12px;
   border-radius: 16px;
   background: rgba(248, 250, 252, 0.86);
@@ -1360,14 +1427,14 @@ function openPromptTool() {
 
 .workflow-rail {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
   gap: 8px;
 }
 
 .workflow-step {
   display: flex;
   gap: 10px;
-  min-height: 100px;
+  min-height: 86px;
   padding: 12px;
   border: 1px solid rgba(29, 29, 31, 0.08);
   border-radius: 18px;
@@ -1466,10 +1533,11 @@ function openPromptTool() {
 
 .next-action-panel {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px;
+  min-height: 100%;
+  padding: 18px;
   border: 1px solid rgba(37, 99, 235, 0.16);
   border-radius: 20px;
   background:
@@ -1479,8 +1547,9 @@ function openPromptTool() {
 
 .next-action-panel strong {
   display: block;
+  margin-top: 10px;
   color: var(--color-text-primary);
-  font-size: 18px;
+  font-size: 22px;
   letter-spacing: -0.4px;
 }
 
@@ -1509,6 +1578,35 @@ function openPromptTool() {
   font-size: 12px;
   font-weight: 850;
   box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.18);
+}
+
+.selected-route-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(29, 29, 31, 0.08);
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.selected-route-card div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.selected-route-card strong {
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.selected-route-card small {
+  color: var(--color-text-secondary);
+  font-size: 12px;
 }
 
 .production-context-grid {
@@ -1601,11 +1699,54 @@ function openPromptTool() {
   opacity: 0.78;
 }
 
+.production-center-focus {
+  gap: 14px;
+}
+
+.workbench-focus-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-radius: 22px;
+}
+
+.focus-context {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.focus-context strong {
+  color: var(--color-text-primary);
+  font-size: 18px;
+  letter-spacing: -0.4px;
+}
+
+.focus-context p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.focus-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
 .production-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 340px);
   gap: 16px;
   align-items: start;
+}
+
+.production-center-focus .production-layout {
+  grid-template-columns: minmax(0, 1fr) 320px;
 }
 
 .production-main-panel,
@@ -1619,6 +1760,9 @@ function openPromptTool() {
   gap: 14px;
   position: sticky;
   top: 86px;
+  max-height: calc(100vh - 110px);
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .overview-columns {
@@ -1789,6 +1933,7 @@ button.overview-list-item {
   .production-context-grid,
   .production-layout,
   .production-tabs,
+  .guide-focus-grid,
   .task-entry-grid,
   .quick-start-panel,
   .quick-start-steps,
@@ -1804,6 +1949,7 @@ button.overview-list-item {
 }
 
 @media (max-width: 720px) {
+  .workbench-focus-bar,
   .production-hero,
   .card-head,
   .next-action-panel,
@@ -1814,6 +1960,11 @@ button.overview-list-item {
 
   .mini-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .quick-start-steps article {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
   }
 }
 </style>
