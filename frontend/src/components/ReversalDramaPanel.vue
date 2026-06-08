@@ -367,6 +367,7 @@ function restoreReversalHistory(item: ReversalDramaHistoryItem) {
   drama.product_name = item.params.product_name
   drama.product_function = item.params.product_function
   drama.pain_point = item.params.pain_point
+  selectedSchemeKey.value = item.params.scheme_key || selectedSchemeKey.value
   drama.template_key = item.params.template_key || 'workplace_reversal'
   drama.reversal_pattern = (item.params.reversal_pattern || 'auto') as ReversalPattern
   drama.cast_source = item.params.cast_source || (item.params.characters?.length ? 'manual' : 'default')
@@ -818,7 +819,7 @@ defineExpose({
             </div>
           </div>
 
-          <div class="form-row">
+          <div v-if="workMode === 'advanced'" class="form-row">
             <label class="form-label">额外要求</label>
             <textarea v-model="drama.extra_requirements" class="input" rows="2"
               placeholder="可选。例：本集突出『打脸老板』，结尾要带一个心率彩蛋"></textarea>
@@ -871,12 +872,25 @@ defineExpose({
         <div class="drama-result-area" v-if="dramaResult">
           <div class="drama-result-header">
             <h3 class="drama-section-title">📜 生成结果</h3>
-            <button class="btn btn-ghost btn-sm" @click="copyDramaMarkdown">复制全文</button>
+            <div class="drama-result-actions">
+              <button
+                class="btn btn-ghost btn-sm"
+                :disabled="isDeliveringTeleprompter"
+                @click="handleSendToTeleprompter"
+              >{{ isDeliveringTeleprompter ? '送入中…' : '送提词器' }}</button>
+              <button
+                class="btn btn-ghost btn-sm"
+                :disabled="isDeliveringVideo"
+                @click="handleSendToVideoAip"
+              >{{ isDeliveringVideo ? '创建中…' : '送视频出片' }}</button>
+              <button class="btn btn-ghost btn-sm" @click="copyDramaMarkdown">复制全文</button>
+            </div>
           </div>
 
           <div class="overview-card" v-if="dramaResult.overview && dramaResult.overview.title">
             <h4 class="overview-title">《{{ dramaResult.overview.title }}》</h4>
             <div class="overview-meta">
+              <span v-if="dramaResult.scheme_name" class="meta-chip">📦 {{ dramaResult.scheme_name }}</span>
               <span v-if="dramaResult.template_name" class="meta-chip">🎭 {{ dramaResult.template_name }}</span>
               <span v-if="dramaResult.reversal_pattern" class="meta-chip">📐 {{ dramaResult.reversal_pattern === 'auto' ? '自动套路' : `套路 ${dramaResult.reversal_pattern}` }}</span>
               <span v-if="dramaResult.overview.duration" class="meta-chip">⏱ {{ dramaResult.overview.duration }}</span>
@@ -1022,6 +1036,28 @@ defineExpose({
 
 <style scoped src="../styles/copilot-workspace.css"></style>
 <style scoped>
+.work-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.scheme-gallery {
+  display: grid;
+  gap: 12px;
+}
+
+.scheme-card strong {
+  font-size: 13px;
+}
+
+.drama-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .drama-config-toggle {
   margin: 8px 0 12px;
 }

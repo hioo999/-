@@ -559,6 +559,9 @@ REVERSAL_DRAMA_USER = """请按上述铁律为我生成一集短视频剧本。
 ## 反转套路要求
 {reversal_pattern_instruction}
 
+## 结构仿写参考（仅学节奏，禁止复用台词）
+{structure_reference_block}
+
 ## 额外要求
 {extra_requirements}
 
@@ -664,3 +667,36 @@ def build_drama_system_prompt(
         template.get("output_format_prompt", ""),
     ]
     return "\n\n".join(part.strip() for part in parts if part and part.strip())
+
+
+def build_structure_reference_block(scenes: list[dict] | None, overview: dict | None = None) -> str:
+    """从参考剧本提取节奏骨架，供结构仿写使用（不含台词）。"""
+    if not scenes:
+        return "无（按当前模板默认结构创作即可）"
+
+    lines = [
+        "请仿写以下参考脚本的**镜号数量、时长节奏、画面推进顺序和反转位置**。",
+        "**禁止**复用参考脚本中的台词、产品名、人物名和具体情节细节。",
+        "",
+    ]
+    if overview:
+        reversal = overview.get("reversal_type") or ""
+        duration = overview.get("duration") or ""
+        if reversal or duration:
+            lines.append(f"参考概览：时长 {duration or '未知'}，反转套路 {reversal or '未知'}")
+            lines.append("")
+
+    lines.append("| 镜号 | 时长 | 画面节奏（仅结构） | 叙事作用 |")
+    lines.append("| :--: | :--: | :--- | :--- |")
+    for scene in scenes:
+        shot = scene.get("shot") or ""
+        duration = scene.get("duration") or ""
+        visual = str(scene.get("visual") or "").strip()
+        if len(visual) > 36:
+            visual = visual[:36] + "…"
+        role = "起" if shot == 1 else ("转" if shot == max((s.get("shot") or 0) for s in scenes) - 1 else "承")
+        if shot == len(scenes):
+            role = "合"
+        lines.append(f"| {shot} | {duration} | {visual or '…'} | {role} |")
+
+    return "\n".join(lines)

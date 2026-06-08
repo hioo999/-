@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from models.persona import DramaScriptTemplate
+from prompts.drama_scheme_presets import resolve_template_key
 from prompts.reversal_drama_prompts import BUILTIN_DRAMA_TEMPLATES
 
 
@@ -41,6 +42,7 @@ def ensure_drama_templates_seeded(db: Session) -> None:
 
 def get_drama_template(db: Session, template_key: str) -> dict[str, Any]:
     """优先读数据库，缺失时回退到内置模板。"""
+    template_key = resolve_template_key(template_key or "workplace_reversal")
     ensure_drama_templates_seeded(db)
     record = (
         db.query(DramaScriptTemplate)

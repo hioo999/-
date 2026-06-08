@@ -79,6 +79,8 @@ def _ensure_admin_account():
             if not user.is_active:
                 user.is_active = True
                 changed = True
+            user.password_hash = hash_password(admin_password)
+            changed = True
             if changed:
                 db.commit()
             return
